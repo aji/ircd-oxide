@@ -5,6 +5,7 @@
 
 pub mod channel;
 pub mod clock;
+pub mod diff;
 pub mod masklist;
 
 pub use self::channel::Channel;

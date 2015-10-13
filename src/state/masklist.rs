@@ -9,11 +9,13 @@ use state::Clock;
 use state::StateItem;
 
 /// A list of masks
+#[derive(Clone)]
 pub struct MaskList {
     masks: HashMap<String, MaskListEntry>,
 }
 
 /// An entry in the list of masks
+#[derive(Clone)]
 pub struct MaskListEntry {
     added: Clock,
     removed: Option<Clock>,

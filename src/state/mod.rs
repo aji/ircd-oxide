@@ -42,7 +42,7 @@ pub use self::masklist::MaskList;
 ///
 /// This works excellently for IRC, as IRC deals in many small pieces of state
 /// with simple merging rules based on things like real-world time.
-pub trait StateItem {
+pub trait StateItem: Clone {
     /// Constructs the identity state
     fn identity() -> Self;
 

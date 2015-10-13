@@ -1,7 +1,7 @@
 // state/diff.rs -- state differences
 // Copyright (C) 2015 Alex Iadicicco <http://ajitek.net/>
 
-//! Definitions for difference computations
+//! Difference computations
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -65,10 +65,22 @@ where K: Eq + Hash, V: Eq {
     }
 }
 
-/// A default implementation of `Diffable` that can be used on atomic items
-pub trait AtomicDiffable: Eq { }
+/// A default implementation of `Diffable` that can be used on atomic items,
+/// i.e. items that don't contain any further items to consider differences of.
+/// Only ever returns a single `Differ::Changed` for the item. This is
+/// essentially a `Diffable`-flavored wrapper around `Eq`
+///
+/// # Example
+///
+/// ```rust
+/// let a = "Hello".to_owned();
+/// let b = "world".to_owned();
+///
+/// a.diff(&b); // returns Some(Changed(..)) with references to a and b
+/// ```
+pub trait AtomDiffable: Eq { }
 
-impl<'r, A: 'r> Diffable<'r> for A where A: AtomicDiffable {
+impl<'r, A: 'r> Diffable<'r> for A where A: AtomDiffable {
     type Item = &'r Self;
     type Diff = Option<Differ<&'r Self>>;
 
@@ -81,18 +93,18 @@ impl<'r, A: 'r> Diffable<'r> for A where A: AtomicDiffable {
     }
 }
 
-impl AtomicDiffable for i8  { }
-impl AtomicDiffable for i16 { }
-impl AtomicDiffable for i32 { }
-impl AtomicDiffable for i64 { }
+impl AtomDiffable for i8  { }
+impl AtomDiffable for i16 { }
+impl AtomDiffable for i32 { }
+impl AtomDiffable for i64 { }
 
-impl AtomicDiffable for u8  { }
-impl AtomicDiffable for u16 { }
-impl AtomicDiffable for u32 { }
-impl AtomicDiffable for u64 { }
+impl AtomDiffable for u8  { }
+impl AtomDiffable for u16 { }
+impl AtomDiffable for u32 { }
+impl AtomDiffable for u64 { }
 
-impl AtomicDiffable for String { }
-impl AtomicDiffable for IrcString { }
+impl AtomDiffable for String { }
+impl AtomDiffable for IrcString { }
 
 #[test]
 fn test_hashmap_diffable_added() {

@@ -3,6 +3,9 @@
 
 //! Definitions for difference computations
 
+use std::collections::HashMap;
+use std::hash::Hash;
+
 use irc::IrcString;
 
 /// A trait that indicates a difference may be computed between elements of
@@ -13,7 +16,7 @@ pub trait Diffable<'r> {
     type Item: 'r;
 
     /// The type of difference that is produced by comparison.
-    type Diff: 'r + IntoIterator<Item=Differ<&'r Self::Item>>;
+    type Diff: 'r + IntoIterator<Item=Differ<Self::Item>>;
 
     /// Compares `self` to `new`, returning an instance of `Diff` that
     /// indicates which `Item`s have been added, removed, or changed in the
@@ -29,11 +32,44 @@ pub enum Differ<I> {
     Changed(I, I),
 }
 
+impl<'r, K: 'r, V: 'r> Diffable<'r> for HashMap<K, V>
+where K: Eq + Hash, V: Eq {
+    type Item = (&'r K, &'r V);
+    type Diff = Vec<Differ<Self::Item>>;
+
+    fn diff(&'r self, new: &'r Self) -> Self::Diff {
+        use self::Differ::*;
+
+        let mut diff = Vec::new();
+
+        // check if anything has been removed or changed by iterating over our
+        // own set first
+        for (k, v1) in self.iter() {
+            match new.get(k) {
+                Some(v2) if v1 == v2 => { },
+                Some(v2) if v1 != v2 => diff.push(Changed((k, v1), (k, v2))),
+                Some(_) => panic!(),
+                None => diff.push(Removed((k, v1))),
+            }
+        }
+
+        // then check if anything has been added by iterating over the new set
+        for (k, v2) in new.iter() {
+            match self.get(k) {
+                Some(_) => { },
+                None => diff.push(Added((k, v2)))
+            }
+        }
+
+        diff
+    }
+}
+
 /// A default implementation of `Diffable` that can be used on atomic items
 pub trait AtomicDiffable: Eq { }
 
 impl<'r, A: 'r> Diffable<'r> for A where A: AtomicDiffable {
-    type Item = Self;
+    type Item = &'r Self;
     type Diff = Option<Differ<&'r Self>>;
 
     fn diff(&'r self, new: &'r Self) -> Self::Diff {
@@ -57,6 +93,71 @@ impl AtomicDiffable for u64 { }
 
 impl AtomicDiffable for String { }
 impl AtomicDiffable for IrcString { }
+
+#[test]
+fn test_hashmap_diffable_added() {
+    use self::Differ::*;
+
+    let old = {
+        let mut old = HashMap::new();
+        old.insert(1, 2);
+        old.insert(3, 4);
+        old
+    };
+
+    let new = {
+        let mut new = HashMap::new();
+        new.insert(1, 2);
+        new.insert(3, 4);
+        new.insert(5, 6);
+        new
+    };
+
+    assert_eq!(vec![Added((&5, &6))], old.diff(&new));
+}
+
+#[test]
+fn test_hashmap_diffable_removed() {
+    use self::Differ::*;
+
+    let old = {
+        let mut old = HashMap::new();
+        old.insert(1, 2);
+        old.insert(3, 4);
+        old.insert(5, 6);
+        old
+    };
+
+    let new = {
+        let mut new = HashMap::new();
+        new.insert(1, 2);
+        new.insert(3, 4);
+        new
+    };
+
+    assert_eq!(vec![Removed((&5, &6))], old.diff(&new));
+}
+
+#[test]
+fn test_hashmap_diffable_changed() {
+    use self::Differ::*;
+
+    let old = {
+        let mut old = HashMap::new();
+        old.insert(1, 2);
+        old.insert(3, 4);
+        old
+    };
+
+    let new = {
+        let mut new = HashMap::new();
+        new.insert(1, 2);
+        new.insert(3, 7);
+        new
+    };
+
+    assert_eq!(vec![Changed((&3, &4), (&3, &7))], old.diff(&new));
+}
 
 #[test]
 fn test_atomic_diffable() {

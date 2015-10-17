@@ -6,12 +6,15 @@
 use std::clone;
 use std::cmp;
 use std::fmt;
+use std::hash;
+use std::hash::Hash;
 use std::marker::PhantomData;
 
 use state::clock::Sid;
 
-// Using PhantomData like we do in this module allows us to make Id covariant
-// with some arbitrary type, which we call the "namespace" of the Id.
+// Using PhantomData like we do in this module allows us to construct distinct
+// types for some arbitrary type we call the "namespace" of the Id while still
+// allowing the same implementation for the different Ids.
 
 /// A unique identifier, more or less a wrapper around a string with some extra
 /// type information.
@@ -46,6 +49,12 @@ impl<Namespace> cmp::PartialEq for Id<Namespace> {
 }
 
 impl<Namespace> cmp::Eq for Id<Namespace> { }
+
+impl<Namespace> Hash for Id<Namespace> {
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        self.id.hash(state)
+    }
+}
 
 /// An `Id` generator. This is the only way to create an `Id`
 ///

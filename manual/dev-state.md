@@ -1,4 +1,4 @@
-% State management
+% Reaching consensus
 
 To portray a single abstract "network" with a cluster of independent servers,
 `ircd-oxide` nodes need to be able to collectively agree on globally shared

@@ -11,6 +11,7 @@
   * [Internals](dev-README.md)
     * [State management](dev-state.md)
     * [Oxen, the cluster protocol](dev-oxen.md)
+    * [Internationalization](dev-i18n.md)
   * [Credits and references](credits.md)
   * [Appendix. Configuration reference](config-README.md)
   * [Appendix. Operator command reference](oper-README.md)

@@ -73,10 +73,15 @@ where K: Eq + Hash, V: Eq {
 /// # Example
 ///
 /// ```rust
+/// use ircd::state::diff::Diffable;
+/// use ircd::state::diff::Differ::*;
+///
 /// let a = "Hello".to_owned();
 /// let b = "world".to_owned();
 ///
-/// a.diff(&b); // returns Some(Changed(..)) with references to a and b
+/// assert_eq!(Some(Changed(&a, &b)), a.diff(&b));
+/// assert_eq!(Some(Changed(&b, &a)), b.diff(&a));
+/// assert_eq!(None,                  a.diff(&a));
 /// ```
 pub trait AtomDiffable: Eq { }
 

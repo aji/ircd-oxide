@@ -1,9 +1,22 @@
 // state/clock.rs -- Lamport clocks
 // Copyright (C) 2015 Alex Iadicicco <http://ajitek.net/>
 
-//! Lamport clocks
+//! Lamport clocks based on real world time.
+//!
+//! The general idea of these clocks is that there exists a total ordering on
+//! them. In other words, for any two clocks, either they are equal or one
+//! supersedes the other. This is in contrast to more involved ordering
+//! mechanisms like vector clocks that may sometimes not wholly dominate each
+//! other. Given this, we can imagine a single global timeline, with distinct
+//! clocks appearing at unique points on the timeline.
+//!
+//! Note that newly created clocks are *guaranteed* to be unique. However,
+//! clocks can be cloned, in which case the clone is considered equal. If a
+//! clock compares as equal to another clock, it can be safely concluded that
+//! one was cloned from the other and they represent the same event.
 
 use std::cmp;
+use std::fmt;
 use time;
 
 use state::StateItem;
@@ -12,8 +25,8 @@ pub type Sid = u64;
 
 pub const IDENTITY_SID: Sid = 0;
 
-/// A basic Lamport clock implementation. Ties on timestamps are resolved by
-/// using the `sid` field.
+/// A basic clock implementation. Ties on timestamps are resolved by using the
+/// `sid` field.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Clock {
     time: time::Timespec,
@@ -29,6 +42,21 @@ impl Clock {
             time: time::get_time(),
             sid:  sid,
         }
+    }
+
+    #[cfg(test)]
+    pub fn at(t: i64) -> Clock {
+        Clock {
+            time: time::Timespec { sec: t, nsec: 0 },
+            sid:  0
+        }
+    }
+}
+
+impl fmt::Debug for Clock {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Clock({}.{:03}-{})",
+                self.time.sec, self.time.nsec / 1000000, self.sid)
     }
 }
 

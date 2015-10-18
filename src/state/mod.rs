@@ -8,6 +8,7 @@ pub mod clock;
 pub mod diff;
 pub mod id;
 pub mod masklist;
+pub mod user;
 
 pub use self::channel::Channel;
 pub use self::channel::Topic;

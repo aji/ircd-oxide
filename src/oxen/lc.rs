@@ -58,8 +58,6 @@ impl LastContact {
 
         let mut queue: VecDeque<Sid> = VecDeque::new();
 
-        println!("");
-
         distances.insert(self.me, 0);
         queue.push_back(self.me);
 
@@ -68,35 +66,27 @@ impl LastContact {
                 Some(u) => u,
                 None => return None
             };
-            println!("dequeue: {}", u);
 
             let distance = distances.get(&u).cloned().unwrap();
 
             for n in self.peers.iter() {
-                println!("  {} -> {}", u, n);
                 if !self.usable(&u, n, now, thresh) {
-                    println!("    not usable");
                     continue;
                 }
 
                 if n != to {
-                    println!("    not target");
                     distances.entry(*n).or_insert_with(|| {
                         parents.insert(*n, u);
                         queue.push_back(*n);
-                        println!("      distance = {}", distance + 1);
                         distance + 1
                     });
                     continue;
                 }
 
-                println!("    target!");
-
                 parents.insert(*n, u);
                 let mut at = n;
 
                 loop {
-                    println!("      <-- {}", at);
                     match parents.get(at) {
                         Some(p) if *p == self.me => return Some(*at),
                         Some(p)                  => at = p,

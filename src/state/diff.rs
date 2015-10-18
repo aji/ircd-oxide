@@ -1,5 +1,8 @@
 // state/diff.rs -- state differences
 // Copyright (C) 2015 Alex Iadicicco <http://ajitek.net/>
+//
+// This file is part of ircd-oxide and is protected under the terms contained in
+// the COPYING file in the project root.
 
 //! Difference computations
 

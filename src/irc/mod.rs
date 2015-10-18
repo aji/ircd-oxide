@@ -1,4 +1,8 @@
 // irc/mod.rs -- IRC handling logic
+// Copyright (C) 2015 Alex Iadicicco <http://ajitek.net>
+//
+// This file is part of ircd-oxide, and is protected under the terms contained
+// in the COPYING file in the project root.
 
 //! Logic for handling specifics of the IRC client protocol
 

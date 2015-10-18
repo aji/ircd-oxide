@@ -15,13 +15,12 @@ actual decision was. In this way, it is a sort of eventual consensus, which
 happens to be good enough for our use case.
 
 Eventual consensus is accomplished by requiring state to be mergeable. A
-stateful type must have an `identity` value and a `merge` operation. If a piece
-of state were a set, these operations would be analogous to Ø, the empty set,
-and ∪, set union. All state changes are implemented as `merge` operations, and
-servers communicate a state change by broadcasting the new state in its
-entirety. *As long as all servers see all new state, at any point in time, in
-any order, with any duplicates, they will come to the same conclusion for the
-final state.*
+stateful type must have a `merge` operation. If a piece of state were a set,
+this would be analogous to ∪, the set union operation. All state changes are
+implemented as `merge` operations, and servers communicate a state change by
+broadcasting the new state in its entirety. **As long as all servers see all
+new state, at any point in time, in any order, allowing duplicates, they will
+come to the same conclusion for the final state.**
 
 ### Proof of consensus
 

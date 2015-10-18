@@ -4,7 +4,7 @@
 //! User state management logic
 
 use irc::IrcString;
-use state::clock;
+use state::Clock;
 use state::diff;
 use state::id::Id;
 use state::StateItem;
@@ -57,22 +57,30 @@ impl Nickname {
 ///     two expirations, and the older claim to occur after that expiration.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NicknameClaim {
-    expired: clock::Clock,
-    claimed: clock::Clock,
+    expired: Clock,
+    claimed: Clock,
     owner: Option<Id<Identity>>,
+}
+
+impl NicknameClaim {
+    /// Creates an empty claim object that can be superseded by any other claim.
+    pub fn empty() -> NicknameClaim {
+        NicknameClaim {
+            expired: Clock::neg_infty(),
+            claimed: Clock::pos_infty(),
+            owner: None,
+        }
+    }
+
+    /// Determines if the claim on the nickname is valid
+    pub fn is_valid(&self) -> bool {
+        self.claimed > self.expired
+    }
 }
 
 impl diff::AtomDiffable for NicknameClaim { }
 
 impl StateItem for NicknameClaim {
-    fn identity() -> NicknameClaim {
-        NicknameClaim {
-            expired: clock::Clock::identity(),
-            claimed: clock::Clock::identity(),
-            owner: None,
-        }
-    }
-
     fn merge(&mut self, other: &NicknameClaim) -> &mut NicknameClaim {
         if self.expired == other.expired {
             // expirations are equal, just take the older claim
@@ -103,9 +111,9 @@ impl StateItem for NicknameClaim {
 #[cfg(test)]
 #[allow(non_snake_case)]
 fn assert_claim_merge(
-    exX: clock::Clock, clX: clock::Clock, ownX: Option<&Id<Identity>>,
-    exS: clock::Clock, clS: clock::Clock, ownS: Option<&Id<Identity>>,
-    exO: clock::Clock, clO: clock::Clock, ownO: Option<&Id<Identity>>,
+    exX: Clock, clX: Clock, ownX: Option<&Id<Identity>>,
+    exS: Clock, clS: Clock, ownS: Option<&Id<Identity>>,
+    exO: Clock, clO: Clock, ownO: Option<&Id<Identity>>,
 ) {
 
     let      x = NicknameClaim { expired: exX, claimed: clX, owner: ownX.cloned() };
@@ -127,7 +135,6 @@ fn assert_claim_merge(
 #[test]
 fn test_nickname_claim_merge() {
     use state::id::IdGenerator;
-    use state::clock::Clock;
 
     let mut idgen: IdGenerator<Identity> = IdGenerator::new(0);
 

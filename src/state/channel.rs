@@ -7,38 +7,12 @@ use state::Clock;
 use state::StateItem;
 
 #[derive(Clone)]
-pub struct Channel {
-    topic: Topic,
-}
-
-#[derive(Clone)]
 pub struct Topic {
     ts: Clock,
     text: String,
 }
 
-impl StateItem for Channel {
-    fn identity() -> Channel {
-        Channel {
-            topic: StateItem::identity(),
-        }
-    }
-
-    fn merge(&mut self, other: &Channel) -> &mut Channel {
-        self.topic.merge(&other.topic);
-
-        self
-    }
-}
-
 impl StateItem for Topic {
-    fn identity() -> Topic {
-        Topic {
-            ts: StateItem::identity(),
-            text: String::new(),
-        }
-    }
-
     fn merge(&mut self, other: &Topic) -> &mut Topic {
         if self.ts < other.ts {
             self.ts    = other.ts.clone();

@@ -44,11 +44,27 @@ impl Clock {
         }
     }
 
+    /// Constructs a `Clock` that is older than every other clock.
+    pub fn neg_infty() -> Clock {
+        Clock {
+            time: time::Timespec { sec: i64::min_value(), nsec: 0 },
+            sid:  IDENTITY_SID
+        }
+    }
+
+    /// Constructs a `Clock` that is newer than every other clock.
+    pub fn pos_infty() -> Clock {
+        Clock {
+            time: time::Timespec { sec: i64::max_value(), nsec: 0 },
+            sid:  IDENTITY_SID
+        }
+    }
+
     #[cfg(test)]
     pub fn at(t: i64) -> Clock {
         Clock {
             time: time::Timespec { sec: t, nsec: 0 },
-            sid:  0
+            sid:  IDENTITY_SID
         }
     }
 }
@@ -83,13 +99,6 @@ impl cmp::Ord for Clock {
 }
 
 impl StateItem for Clock {
-    fn identity() -> Clock {
-        Clock {
-            time: time::Timespec { sec: 0, nsec: 0 },
-            sid:  IDENTITY_SID,
-        }
-    }
-
     fn merge(&mut self, other: &Clock) -> &mut Clock {
         if *self < *other {
             self.time  = other.time;

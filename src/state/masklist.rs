@@ -22,14 +22,10 @@ pub struct MaskListEntry {
 }
 
 impl StateItem for MaskList {
-    fn identity() -> MaskList {
-        MaskList { masks: HashMap::new() }
-    }
-
     fn merge(&mut self, other: &MaskList) -> &mut MaskList {
         for (mask, other_ent) in other.masks.iter() {
             self.masks.entry(mask.clone())
-                    .or_insert_with(|| StateItem::identity())
+                    .or_insert_with(|| MaskListEntry::empty())
                     .merge(other_ent);
         }
 
@@ -37,14 +33,16 @@ impl StateItem for MaskList {
     }
 }
 
-impl StateItem for MaskListEntry {
-    fn identity() -> MaskListEntry {
+impl MaskListEntry {
+    fn empty() -> MaskListEntry {
         MaskListEntry {
-            added: StateItem::identity(),
-            removed: None,
+            added: Clock::neg_infty(),
+            removed: None
         }
     }
+}
 
+impl StateItem for MaskListEntry {
     fn merge(&mut self, other: &MaskListEntry) -> &mut MaskListEntry{
         // we have to always merge the newly added clock. failure to do so
         // could result in add times diverging.
@@ -52,7 +50,7 @@ impl StateItem for MaskListEntry {
 
         if let Some(other_removed) = other.removed {
             self.removed = self.removed
-                    .or_else(|| Some(StateItem::identity()))
+                    .or_else(|| Some(Clock::neg_infty()))
                     .as_mut().map(|r| *r.merge(&other_removed));
         }
 

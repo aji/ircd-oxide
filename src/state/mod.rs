@@ -10,8 +10,6 @@ pub mod id;
 pub mod masklist;
 pub mod user;
 
-pub use self::channel::Channel;
-pub use self::channel::Topic;
 pub use self::clock::Clock;
 pub use self::masklist::MaskList;
 
@@ -19,7 +17,6 @@ pub use self::masklist::MaskList;
 /// state. The `merge()` operation will be used to perform all updates, and
 /// must have the following properties:
 ///
-///   * Existence of an identity: `merge(X, e)` = `X` for some identity `e`
 ///   * Idempotency: `merge(X, X)` = `X`
 ///   * Commutativity: `merge(A, B)` = `merge(B, A)`
 ///   * Associativity: `merge(merge(A, B), C)` = `merge(A, merge(B, C))`
@@ -46,9 +43,6 @@ pub use self::masklist::MaskList;
 /// This works excellently for IRC, as IRC deals in many small pieces of state
 /// with simple merging rules based on things like real-world time.
 pub trait StateItem: Clone {
-    /// Constructs the identity state
-    fn identity() -> Self;
-
     /// This is the most important operation that any piece of state should
     /// implement. See the trait-level documentation for what requirements this
     /// function should have.

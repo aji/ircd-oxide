@@ -1,4 +1,4 @@
-// src/oxen.rs -- oxen server-to-server protocol
+// oxen/mod.rs -- oxen server-to-server protocol
 // Copyright (C) 2015 Alex Iadicicco <http://ajitek.net>
 //
 // This file is part of ircd-oxide and is protected under the terms contained in

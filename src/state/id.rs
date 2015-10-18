@@ -13,7 +13,7 @@ use std::hash;
 use std::hash::Hash;
 use std::marker::PhantomData;
 
-use state::clock::Sid;
+use util::Sid;
 
 // Using PhantomData like we do in this module allows us to construct distinct
 // types for some arbitrary type we call the "namespace" of the Id while still
@@ -99,8 +99,8 @@ struct Bar;
 
 #[test]
 fn test_types_ok() {
-    let mut fooid: IdGenerator<Foo> = IdGenerator::new(0);
-    let mut barid: IdGenerator<Bar> = IdGenerator::new(0);
+    let mut fooid: IdGenerator<Foo> = IdGenerator::new(Sid::identity());
+    let mut barid: IdGenerator<Bar> = IdGenerator::new(Sid::identity());
 
     let _: Id<Foo> = fooid.next();
     let _: Id<Bar> = barid.next();

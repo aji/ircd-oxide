@@ -17,7 +17,7 @@ impl<K, V> Table<K, V> where K: Hash + Eq {
         Table { rows: HashMap::new() }
     }
 
-    pub fn get(&mut self, k1: &K, k2: &K) -> Option<&V> {
+    pub fn get(&self, k1: &K, k2: &K) -> Option<&V> {
         self.rows.get(k1).and_then(|r| r.get(k2))
     }
 

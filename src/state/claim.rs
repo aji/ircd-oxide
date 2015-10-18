@@ -210,8 +210,9 @@ fn assert_claim_merge<Owner: 'static>(
 #[test]
 fn test_claim_merge() {
     use state::IdGenerator;
+    use util::Sid;
 
-    let mut idgen: IdGenerator<()> = IdGenerator::new(0);
+    let mut idgen: IdGenerator<()> = IdGenerator::new(Sid::identity());
 
     let t0 = Clock::at(0);
     let t1 = Clock::at(1);

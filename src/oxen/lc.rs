@@ -1,11 +1,13 @@
-// util/mod.rs -- various generic utilities
+// oxen/lc.rs -- last contact
 // Copyright (C) 2015 Alex Iadicicco
 //
 // This file is part of ircd-oxide and is protected under the terms contained in
 // the COPYING file in the project root.
 
-pub mod sid;
-pub mod table;
+use time;
 
-pub use self::sid::Sid;
-pub use self::table::Table;
+use util::Table;
+
+pub struct LastContact {
+    tab: Table<Sid, time::Timespec>,
+}

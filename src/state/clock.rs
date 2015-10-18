@@ -23,10 +23,7 @@ use std::fmt;
 use time;
 
 use state::StateItem;
-
-pub type Sid = u64;
-
-pub const IDENTITY_SID: Sid = 0;
+use util::Sid;
 
 /// A basic clock implementation. Ties on timestamps are resolved by using the
 /// `sid` field.
@@ -39,8 +36,6 @@ pub struct Clock {
 impl Clock {
     /// Constructs a `Clock` corresponding to the current moment in time.
     pub fn now(sid: Sid) -> Clock {
-        assert!(sid != IDENTITY_SID);
-
         Clock {
             time: time::get_time(),
             sid:  sid,
@@ -51,7 +46,7 @@ impl Clock {
     pub fn neg_infty() -> Clock {
         Clock {
             time: time::Timespec { sec: i64::min_value(), nsec: 0 },
-            sid:  IDENTITY_SID
+            sid:  Sid::identity()
         }
     }
 
@@ -59,7 +54,7 @@ impl Clock {
     pub fn pos_infty() -> Clock {
         Clock {
             time: time::Timespec { sec: i64::max_value(), nsec: 0 },
-            sid:  IDENTITY_SID
+            sid:  Sid::identity()
         }
     }
 
@@ -67,7 +62,7 @@ impl Clock {
     pub fn at(t: i64) -> Clock {
         Clock {
             time: time::Timespec { sec: t, nsec: 0 },
-            sid:  IDENTITY_SID
+            sid:  Sid::identity()
         }
     }
 }

@@ -96,3 +96,23 @@ time, Oxen may give up, mark the node as definitely unreachable, clear all
 outstanding messages to that node, and drop any future messages to or from that
 node. If the node becomes reachable again, Oxen will inform the protocol user
 and resume normal operation.
+
+Because of the nature of distributed systems, we *will* give up on a peer at a
+different time than every other peer. In fact, we may not agree with other
+peers on whether a node should be given up on at all. It's important that Oxen
+remains consistent in the face of this.
+
+Consider the scenario where we give up on a peer *P*. The protocol user is
+informed, and we clear our queue, as if *P* has voluntarily left the cluster.
+Suppose some other fully reachable peer *Q* has not yet given up on *P*. If *Q*
+receives a message from *P* at this time, addressed to us, *Q* will happily
+send it our way, and maybe eventually go back to considering *P* reachable. In
+the meantime, we will receive a message from *P*, a server we considered dead!
+In this scenario, we will simply drop the message from *P*. However, new
+information from peers may reveal that *P* is reachable again. We revert *P*'s
+status, informing the protocol user that *P* is now reachable, as if *P* has
+voluntarily joined the cluster.
+
+Protocol users should be careful when treating unexpected loss of contact with
+servers significantly differently from expected loss of contact. A similar
+warning applies to expected versus unexpected new contact.

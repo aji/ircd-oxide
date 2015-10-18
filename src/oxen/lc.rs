@@ -144,9 +144,11 @@ fn test_route_undirected() {
 
     let now: f64 = 100.0;
 
-    //  me--n1--n2--n3
-    //   |       |
-    //  n4--n5  n6  n7
+    //  me <--> n1 <--> n2 <--> n3
+    //   ^               ^
+    //   |               |
+    //   v               v
+    //  n4 <--> n5      n6      n7 . o O ( I'm so lonely )
 
     let lc = {
         let mut lc = LastContact::new(me);
@@ -220,4 +222,47 @@ fn test_route_directed() {
     assert_eq!(Some(n3), lc.route(&n5, now, 10.0));
     assert_eq!(Some(n3), lc.route(&n6, now, 10.0));
     assert_eq!(Some(n3), lc.route(&n7, now, 10.0));
+}
+
+#[test]
+fn test_route_shortest_path() {
+    let me = Sid::new("0ME");
+    let n1 = Sid::new("0N1");
+    let n2 = Sid::new("0N2");
+    let n3 = Sid::new("0N3");
+    let n4 = Sid::new("0N4");
+    let n5 = Sid::new("0N5");
+    let n6 = Sid::new("0N6");
+    let n7 = Sid::new("0N7");
+
+    let now: f64 = 100.0;
+
+    //  me-->n1-->n2-->n3-->n4-->n5-->n6
+    //   |                             ^
+    //   |                             |
+    //   +---------------------->n7----+
+
+    let lc = {
+        let mut lc = LastContact::new(me);
+
+        lc.put(me, n1, now);
+        lc.put(n1, n2, now);
+        lc.put(n2, n3, now);
+        lc.put(n3, n4, now);
+        lc.put(n4, n5, now);
+        lc.put(n5, n6, now);
+        lc.put(me, n7, now);
+        lc.put(n7, n6, now);
+
+        lc
+    };
+
+    assert_eq!(Some(me), lc.route(&me, now, 10.0));
+    assert_eq!(Some(n1), lc.route(&n1, now, 10.0));
+    assert_eq!(Some(n1), lc.route(&n2, now, 10.0));
+    assert_eq!(Some(n1), lc.route(&n3, now, 10.0));
+    assert_eq!(Some(n1), lc.route(&n4, now, 10.0));
+    assert_eq!(Some(n1), lc.route(&n5, now, 10.0));
+    assert_eq!(Some(n7), lc.route(&n6, now, 10.0));
+    assert_eq!(Some(n7), lc.route(&n7, now, 10.0));
 }

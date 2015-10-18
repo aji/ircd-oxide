@@ -140,6 +140,7 @@ fn test_route_undirected() {
         lc
     };
 
+    assert_eq!(Some(me), lc.route(&me, now, 10.0));
     assert_eq!(Some(n1), lc.route(&n1, now, 10.0));
     assert_eq!(Some(n1), lc.route(&n2, now, 10.0));
     assert_eq!(Some(n1), lc.route(&n3, now, 10.0));
@@ -188,6 +189,7 @@ fn test_route_directed() {
         lc
     };
 
+    assert_eq!(Some(me), lc.route(&me, now, 10.0));
     assert_eq!(Some(n1), lc.route(&n1, now, 10.0));
     assert_eq!(Some(n1), lc.route(&n2, now, 10.0));
     assert_eq!(Some(n3), lc.route(&n3, now, 10.0));

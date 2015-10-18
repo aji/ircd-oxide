@@ -4,6 +4,20 @@
 // This file is part of ircd-oxide and is protected under the terms contained in
 // the COPYING file in the project root.
 
+//! The "last contact" table.
+//!
+//! The last contact table is used for making a number of decisions in Oxen,
+//! particularly message routing and deciding whether to give up on a peer.
+//! When a message is sent for delivery, the time of the first attempt is
+//! recorded. When the message is acknowledged, the time of the first attempt is
+//! used as the "last contact" time. This is to prevent high latency from making
+//! hosts appear more reachable than they actually are.
+//!
+//! Last contact information is merely a heuristic, and should never be
+//! interpreted as indicating anything certain about the network. However, it's
+//! useful to have a vague idea of what may or may not fail, and the last
+//! contact table provides that.
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -15,6 +29,8 @@ use util::Table;
 // timestamp representing negative infinity
 const NEG_INFTY: f64 = 0.0;
 
+/// The last contact table. See the [module level documentation](index.html)
+/// for more information.
 pub struct LastContact {
     me: Sid,
     peers: HashSet<Sid>,
@@ -22,26 +38,39 @@ pub struct LastContact {
 }
 
 impl LastContact {
+    /// Creates a new `LastContact` instance, with `me` corresponding to the SID
+    /// of this node.
     pub fn new(me: Sid) -> LastContact {
         let mut peers = HashSet::new();
         peers.insert(me);
         LastContact { me: me, peers: peers, tab: Table::new() }
     }
 
+    /// Fetches the time of the last contact between two given nodes. If the
+    /// requested information is not known, some arbitrary timestamp, well in
+    /// the past, is returned.
     pub fn get(&self, from: &Sid, to: &Sid) -> f64 {
         self.tab.get(from, to).map(|t| *t).unwrap_or(NEG_INFTY)
     }
 
+    /// Puts the last contact time in the table.
     pub fn put(&mut self, from: Sid, to: Sid, time: f64) {
         self.peers.insert(from);
         self.peers.insert(to);
         self.tab.put(from, to, time);
     }
 
+    /// Determines if the indicated link is possibly usable, given some current
+    /// time and a threshold time delta. If the last contact time is before
+    /// `now - thresh`, the link is considered "probably unusable".
     pub fn usable(&self, from: &Sid, to: &Sid, now: f64, thresh: f64) -> bool {
         from == to || self.get(from, to) > now - thresh
     }
 
+    /// Determines if the indicated peer is possibly reachable, given some
+    /// current time and a threshold time delta. If there is no link *to* the
+    /// peer with a last contact time within the threshold, the peer is
+    /// considered unreachable.
     pub fn reachable(&self, to: &Sid, now: f64, thresh: f64) -> bool {
         for p in self.peers.iter() {
             if self.usable(p, to, now, thresh) {
@@ -52,6 +81,10 @@ impl LastContact {
         false
     }
 
+    /// Attempts to find the first node along a possibly usable path from this
+    /// node (`self.me`) to peer `to`, given some current time and a threshold
+    /// time delta. If no usable path can be found (i.e. we appear to be totally
+    /// partioned from `to`) then `None` is returned.
     pub fn route(&self, to: &Sid, now: f64, thresh: f64) -> Option<Sid> {
         let mut distances: HashMap<Sid, isize> = HashMap::new();
         let mut parents: HashMap<Sid, Sid> = HashMap::new();

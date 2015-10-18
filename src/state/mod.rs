@@ -4,13 +4,17 @@
 //! State handling
 
 pub mod channel;
+pub mod claim;
 pub mod clock;
 pub mod diff;
 pub mod id;
 pub mod masklist;
 pub mod user;
 
+pub use self::claim::Claim;
 pub use self::clock::Clock;
+pub use self::id::Id;
+pub use self::id::IdGenerator;
 pub use self::masklist::MaskList;
 
 /// `StateItem` will be implemented by all updatable pieces of global shared

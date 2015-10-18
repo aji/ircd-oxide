@@ -39,7 +39,7 @@ impl LastContact {
     }
 
     pub fn usable(&self, from: &Sid, to: &Sid, now: f64, thresh: f64) -> bool {
-        self.get(from, to) > now - thresh
+        from == to || self.get(from, to) > now - thresh
     }
 
     pub fn reachable(&self, to: &Sid, now: f64, thresh: f64) -> bool {

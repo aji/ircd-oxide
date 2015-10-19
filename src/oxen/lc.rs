@@ -21,20 +21,21 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use time;
+use time::Duration;
+use time::Timespec;
 
 use util::Sid;
 use util::Table;
 
 // timestamp representing negative infinity
-const NEG_INFTY: f64 = 0.0;
+const NEG_INFTY: Timespec = Timespec { sec: 0, nsec: 0 };
 
 /// The last contact table. See the [module level documentation](index.html)
 /// for more information.
 pub struct LastContact {
     me: Sid,
     peers: HashSet<Sid>,
-    tab: Table<Sid, f64>,
+    tab: Table<Sid, Timespec>,
 }
 
 impl LastContact {
@@ -49,12 +50,12 @@ impl LastContact {
     /// Fetches the time of the last contact between two given nodes. If the
     /// requested information is not known, some arbitrary timestamp, well in
     /// the past, is returned.
-    pub fn get(&self, from: &Sid, to: &Sid) -> f64 {
+    pub fn get(&self, from: &Sid, to: &Sid) -> Timespec {
         self.tab.get(from, to).map(|t| *t).unwrap_or(NEG_INFTY)
     }
 
     /// Puts the last contact time in the table.
-    pub fn put(&mut self, from: Sid, to: Sid, time: f64) {
+    pub fn put(&mut self, from: Sid, to: Sid, time: Timespec) {
         self.peers.insert(from);
         self.peers.insert(to);
         self.tab.put(from, to, time);
@@ -63,7 +64,9 @@ impl LastContact {
     /// Determines if the indicated link is possibly usable, given some current
     /// time and a threshold time delta. If the last contact time is before
     /// `now - thresh`, the link is considered "probably unusable".
-    pub fn usable(&self, from: &Sid, to: &Sid, now: f64, thresh: f64) -> bool {
+    pub fn usable(
+        &self, from: &Sid, to: &Sid, now: Timespec, thresh: Duration
+    ) -> bool {
         from == to || self.get(from, to) > now - thresh
     }
 
@@ -71,7 +74,9 @@ impl LastContact {
     /// current time and a threshold time delta. If there is no link *to* the
     /// peer with a last contact time within the threshold, the peer is
     /// considered unreachable.
-    pub fn reachable(&self, to: &Sid, now: f64, thresh: f64) -> bool {
+    pub fn reachable(
+        &self, to: &Sid, now: Timespec, thresh: Duration
+    ) -> bool {
         for p in self.peers.iter() {
             if self.usable(p, to, now, thresh) {
                 return true;
@@ -85,7 +90,9 @@ impl LastContact {
     /// node (`self.me`) to peer `to`, given some current time and a threshold
     /// time delta. If no usable path can be found (i.e. we appear to be totally
     /// partioned from `to`) then `None` is returned.
-    pub fn route(&self, to: &Sid, now: f64, thresh: f64) -> Option<Sid> {
+    pub fn route(
+        &self, to: &Sid, now: Timespec, thresh: Duration
+    ) -> Option<Sid> {
         let mut distances: HashMap<Sid, isize> = HashMap::new();
         let mut parents: HashMap<Sid, Sid> = HashMap::new();
 
@@ -133,6 +140,8 @@ impl LastContact {
 
 #[test]
 fn test_route_undirected() {
+    use time;
+
     let me = Sid::new("0ME");
     let n1 = Sid::new("0N1");
     let n2 = Sid::new("0N2");
@@ -142,7 +151,8 @@ fn test_route_undirected() {
     let n6 = Sid::new("0N6");
     let n7 = Sid::new("0N7");
 
-    let now: f64 = 100.0;
+    let now = time::get_time();
+    let dur = Duration::seconds(10);
 
     //  me <--> n1 <--> n2 <--> n3
     //   ^               ^
@@ -165,18 +175,20 @@ fn test_route_undirected() {
         lc
     };
 
-    assert_eq!(Some(me), lc.route(&me, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n1, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n2, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n3, now, 10.0));
-    assert_eq!(Some(n4), lc.route(&n4, now, 10.0));
-    assert_eq!(Some(n4), lc.route(&n5, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n6, now, 10.0));
-    assert_eq!(None,     lc.route(&n7, now, 10.0));
+    assert_eq!(Some(me), lc.route(&me, now, dur));
+    assert_eq!(Some(n1), lc.route(&n1, now, dur));
+    assert_eq!(Some(n1), lc.route(&n2, now, dur));
+    assert_eq!(Some(n1), lc.route(&n3, now, dur));
+    assert_eq!(Some(n4), lc.route(&n4, now, dur));
+    assert_eq!(Some(n4), lc.route(&n5, now, dur));
+    assert_eq!(Some(n1), lc.route(&n6, now, dur));
+    assert_eq!(None,     lc.route(&n7, now, dur));
 }
 
 #[test]
 fn test_route_directed() {
+    use time;
+
     let me = Sid::new("0ME");
     let n1 = Sid::new("0N1");
     let n2 = Sid::new("0N2");
@@ -186,7 +198,8 @@ fn test_route_directed() {
     let n6 = Sid::new("0N6");
     let n7 = Sid::new("0N7");
 
-    let now: f64 = 100.0;
+    let now = time::get_time();
+    let dur = Duration::seconds(10);
 
     // me <--> n1 <--> n2 <--- n6 <--- n7
     //  ^                               ^
@@ -214,18 +227,20 @@ fn test_route_directed() {
         lc
     };
 
-    assert_eq!(Some(me), lc.route(&me, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n1, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n2, now, 10.0));
-    assert_eq!(Some(n3), lc.route(&n3, now, 10.0));
-    assert_eq!(Some(n3), lc.route(&n4, now, 10.0));
-    assert_eq!(Some(n3), lc.route(&n5, now, 10.0));
-    assert_eq!(Some(n3), lc.route(&n6, now, 10.0));
-    assert_eq!(Some(n3), lc.route(&n7, now, 10.0));
+    assert_eq!(Some(me), lc.route(&me, now, dur));
+    assert_eq!(Some(n1), lc.route(&n1, now, dur));
+    assert_eq!(Some(n1), lc.route(&n2, now, dur));
+    assert_eq!(Some(n3), lc.route(&n3, now, dur));
+    assert_eq!(Some(n3), lc.route(&n4, now, dur));
+    assert_eq!(Some(n3), lc.route(&n5, now, dur));
+    assert_eq!(Some(n3), lc.route(&n6, now, dur));
+    assert_eq!(Some(n3), lc.route(&n7, now, dur));
 }
 
 #[test]
 fn test_route_shortest_path() {
+    use time;
+
     let me = Sid::new("0ME");
     let n1 = Sid::new("0N1");
     let n2 = Sid::new("0N2");
@@ -235,7 +250,8 @@ fn test_route_shortest_path() {
     let n6 = Sid::new("0N6");
     let n7 = Sid::new("0N7");
 
-    let now: f64 = 100.0;
+    let now = time::get_time();
+    let dur = Duration::seconds(10);
 
     //  me-->n1-->n2-->n3-->n4-->n5-->n6
     //   |                             ^
@@ -257,12 +273,12 @@ fn test_route_shortest_path() {
         lc
     };
 
-    assert_eq!(Some(me), lc.route(&me, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n1, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n2, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n3, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n4, now, 10.0));
-    assert_eq!(Some(n1), lc.route(&n5, now, 10.0));
-    assert_eq!(Some(n7), lc.route(&n6, now, 10.0));
-    assert_eq!(Some(n7), lc.route(&n7, now, 10.0));
+    assert_eq!(Some(me), lc.route(&me, now, dur));
+    assert_eq!(Some(n1), lc.route(&n1, now, dur));
+    assert_eq!(Some(n1), lc.route(&n2, now, dur));
+    assert_eq!(Some(n1), lc.route(&n3, now, dur));
+    assert_eq!(Some(n1), lc.route(&n4, now, dur));
+    assert_eq!(Some(n1), lc.route(&n5, now, dur));
+    assert_eq!(Some(n7), lc.route(&n6, now, dur));
+    assert_eq!(Some(n7), lc.route(&n7, now, dur));
 }

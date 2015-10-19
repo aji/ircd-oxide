@@ -10,3 +10,4 @@ pub mod irc;
 pub mod oxen;
 pub mod state;
 pub mod util;
+pub mod xenc;

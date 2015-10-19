@@ -13,6 +13,7 @@
     * [State changes](dev-diff.md)
     * [Oxen, the cluster protocol](dev-oxen.md)
     * [Internationalization](dev-i18n.md)
+    * [The XENC format](dev-xenc.md)
   * [Credits and references](credits.md)
   * [Appendix. Configuration reference](config-README.md)
   * [Appendix. Operator command reference](oper-README.md)

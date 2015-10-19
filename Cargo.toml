@@ -3,5 +3,20 @@ name = "ircd"
 version = "0.0.1"
 authors = ["Alex Iadicicco <alex@ajitek.net>"]
 
+[lib]
+name = "ircd"
+path = "lib/ircd.rs"
+test = true
+doctest = false
+doc = true
+
+[[bin]]
+name = "ircd-oxide"
+path = "src/ircd-oxide.rs"
+test = false
+doctest = false
+bench = false
+doc = false
+
 [dependencies]
 time = "*"

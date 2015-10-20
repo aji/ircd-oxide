@@ -6,6 +6,10 @@
 
 use std::collections::HashMap;
 
+/// An XENC value.
+///
+/// `Value`s are the nodes in the XENC parse tree. `I64` and `Octets` are always
+/// leaves, while `List` and `Dict` may contain other values.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Value {
     I64(i64),
@@ -14,19 +18,23 @@ pub enum Value {
     Dict(HashMap<Vec<u8>, Value>),
 }
 
+/// An error during parse
 #[derive(Debug, PartialEq, Eq)]
 pub struct XencError;
 
+/// A parser
 pub struct Parser<'a> {
     buf: &'a [u8],
     i: usize,
 }
 
 impl<'a> Parser<'a> {
+    /// Creates a new parser over the given byte slice
     pub fn new(buf: &[u8]) -> Parser {
         Parser { buf: buf, i: 0 }
     }
 
+    /// Checks if the parser is at the end of its input
     pub fn empty(&self) -> bool {
         self.i >= self.buf.len()
     }
@@ -65,6 +73,8 @@ impl<'a> Parser<'a> {
         Ok(v)
     }
 
+    /// Fetches the next `Value` in the input slice, or an error if there was a
+    /// problem with the data.
     pub fn next(&mut self) -> Result<Value, XencError> {
         match self.peek() {
             b'i' => {
@@ -158,6 +168,10 @@ fn test_simple_list() {
     );
 
     assert_eq!(Err(XencError), decode("li3e"));
+
+    let mut p = Parser::new(b"lei0e");
+    assert_eq!(Value::List(Vec::new()),  p.next().unwrap());
+    assert_eq!(Value::I64(0),            p.next().unwrap());
 }
 
 #[test]
@@ -211,4 +225,13 @@ fn test_simple_dict() {
     assert_eq!(Err(XencError), decode("d3:abce")); // missing value
     assert_eq!(Err(XencError), decode("d3:abci0e")); // end of input
     assert_eq!(Err(XencError), decode("di0ei0ee")); // non-string key
+
+    let mut p = Parser::new(b"dei0e");
+    assert_eq!(Value::Dict(HashMap::new()),  p.next().unwrap());
+    assert_eq!(Value::I64(0),                p.next().unwrap());
+
+    // We don't really need to test if nesting works properly on dicts!
+    // at this point we know that only strings are allowed as keys, that
+    // we are using .next() to get keys and values, and that the dict
+    // variant of .next() leaves the pointer in the right spot.
 }

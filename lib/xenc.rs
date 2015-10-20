@@ -5,6 +5,8 @@
 // the COPYING file in the project root.
 
 use std::collections::HashMap;
+use std::io;
+use std::io::prelude::*;
 
 /// An XENC value.
 ///
@@ -16,6 +18,64 @@ pub enum Value {
     Octets(Vec<u8>),
     List(Vec<Value>),
     Dict(HashMap<Vec<u8>, Value>),
+}
+
+impl Value {
+    /// The contained value as an `i16`, if `self` is an `I64`, otherwise
+    /// `None`
+    pub fn as_i64(&self) -> Option<i64> {
+        match *self { Value::I64(v) => Some(v), _ => None }
+    }
+
+    /// The contained value as a slice of octets, if `self` is an `Octets`,
+    /// otherwise `None`.
+    pub fn as_octets(&self) -> Option<&[u8]> {
+        match *self { Value::Octets(ref v) => Some(&v[..]), _ => None }
+    }
+
+    /// The contained value as a slice of `Value`, if `self` is a `List`,
+    /// otherwise `None`.
+    pub fn as_list(&self) -> Option<&[Value]> {
+        match *self { Value::List(ref v) => Some(&v[..]), _ => None }
+    }
+
+    /// A reference to the contained value, if `self` is a `Dict`, otherwise
+    /// `None`.
+    pub fn as_dict(&self) -> Option<&HashMap<Vec<u8>, Value>> {
+        match *self { Value::Dict(ref v) => Some(&v), _ => None }
+    }
+
+    /// Serializes `self` to the given `Write`able, otherwise `None`.
+    pub fn write<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        match *self {
+            Value::I64(v) => write!(w, "i{}e", v),
+
+            Value::Octets(ref v) => {
+                try!(write!(w, "{}:", v.len()));
+                w.write_all(&v[..])
+            },
+
+            Value::List(ref v) => {
+                try!(write!(w, "l"));
+                for child in v.iter() {
+                    try!(child.write(w));
+                }
+                try!(write!(w, "e"));
+                Ok(())
+            },
+
+            Value::Dict(ref v) => {
+                try!(write!(w, "d"));
+                for (k, child) in v.iter() {
+                    try!(write!(w, "{}:", k.len()));
+                    try!(w.write_all(&k[..]));
+                    try!(child.write(w));
+                }
+                try!(write!(w, "e"));
+                Ok(())
+            },
+        }
+    }
 }
 
 /// An error during parse
@@ -138,6 +198,24 @@ fn decode(s: &str) -> Result<Value, XencError> {
     Parser::new(s.as_bytes()).next()
 }
 
+#[cfg(test)]
+fn codec(s1: &str) -> bool {
+    let v1 = Parser::new(s1.as_bytes()).next().unwrap();
+
+    let s2 = {
+        let mut s = Vec::new();
+        v1.write(&mut s).unwrap();
+        s
+    };
+
+    let v2 = Parser::new(&s2[..]).next().unwrap();
+
+    println!("v1 = {:?}", v1);
+    println!("v2 = {:?}", v2);
+
+    v1 == v2
+}
+
 #[test]
 fn test_integers() {
     assert_eq!(Ok(Value::I64(0)),    decode("i0e"));
@@ -234,4 +312,16 @@ fn test_simple_dict() {
     // at this point we know that only strings are allowed as keys, that
     // we are using .next() to get keys and values, and that the dict
     // variant of .next() leaves the pointer in the right spot.
+}
+
+#[test]
+fn test_codecs() {
+    assert!(codec("i6e"));                    // 6
+    assert!(codec("3:abc"));                  // "abc"
+    assert!(codec("le"));                     // []
+    assert!(codec("li6e3:abce"));             // [6,"abc"]
+    assert!(codec("li6el3:abcee"));           // [6,["abc"]]
+    assert!(codec("de"));                     // {}
+    assert!(codec("d3:abc3:defe"));           // {"abc":"def"}
+    assert!(codec("d3:abcd3:defi6eee"));      // {"abc":{"def":6}}
 }

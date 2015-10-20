@@ -88,20 +88,27 @@ subsets of *I* to trigger selection of new elements of *X*.
 
 Sending around subsets of *I* and merging by set union, while theoretically
 sound, is simply impractical. However, this model gives us a framework with
-which to prove the consistency of more practical models.
+which to prove the consistency of more practical models. Fortunately, we can
+show that the consistency of one model implies the consistency of another,
+given a surjective mapping from the former state space to that of the latter.
 
-Fortunately, if we wish to prove a model *M*<sub>1</sub> = (*S*<sub>1</sub>,
-*m*<sub>1</sub>) is consistent, we can choose a model *M*<sub>2</sub> =
-(*S*<sub>2</sub>, *m*<sub>2</sub>) which is known to be consistent and a
-surjective transformation function *T* : *S*<sub>2</sub> &rarr; *S*<sub>1</sub>
-and show that *m*<sub>1</sub>(*T*(*s*), *T*(*t*)) = *T*(*m*<sub>2</sub>(*s*,
-*t*)) holds for any *s*, *t* &isin; *S*<sub>2</sub>.
+***The consistency theorem.*** Let *M*<sub>1</sub> = (*S*<sub>1</sub>,
+*m*<sub>1</sub>) be a state model, *M*<sub>2</sub> = (*S*<sub>2</sub>,
+*m*<sub>2</sub>) be a state model which is known to be consistent, and *T* :
+*S*<sub>2</sub> &rarr; *S*<sub>1</sub> be a surjective function. If
+*m*<sub>1</sub>(*T*(*s*), *T*(*t*)) = *T*(*m*<sub>2</sub>(*s*, *t*)) holds for
+any *s*, *t* &isin; *S*<sub>2</sub>, then *M*<sub>1</sub> is consistent.
 
-This proof is nasty, so don't read it if you don't truly care about why the
-above works. We can prove that this implies the consistency of *M*<sub>1</sub>
-by showing that each of the 3 conditions for consistency *m*<sub>2</sub> is
-required to meet imply the same condition on *m*<sub>1</sub>. Since
-*m*<sub>1</sub> meets all three criteria, *M*<sub>1</sub> is consistent.
+> *In plain English, if we can transform states from model A to model B, and
+> merging transformed B-states is the same as transforming merged A-states,
+> then B is consistent if A is consistent.*
+
+*Proof.* This proof is nasty, so don't read it if you don't truly care about
+why the above works. We can prove that this implies the consistency of
+*M*<sub>1</sub> by showing that each of the 3 conditions for consistency
+*m*<sub>2</sub> is required to meet imply the same condition on
+*m*<sub>1</sub>. Since *m*<sub>1</sub> meets all three criteria,
+*M*<sub>1</sub> is consistent.
 
  1. Idempotency:
     * *m*<sub>2</sub>(*x*, *x*) = *x*
@@ -140,8 +147,35 @@ required to meet imply the same condition on *m*<sub>1</sub>. Since
     * Therefore, *m*<sub>1</sub> is associative
 
 Don't worry if your eyes glossed over during that last part. The Markdown
-source is even less readable. It's just some substitutions to show that the 3
-consistency criteria on *m*<sub>2</sub> and the equivalence defined above lead
-to the 3 criteria holding for *m*<sub>1</sub> as well. I've included the proof
-here for the sake of completeness, so that readers can choose to verify my
-conclusion if they wish.
+source is even less readable. It's just some substitutions and algebra to show
+that the 3 consistency criteria on *m*<sub>2</sub> and the equivalence defined
+above lead to the 3 criteria holding for *m*<sub>1</sub> as well. I've included
+the proof here for the sake of completeness, so that readers can choose to
+verify my conclusion if they wish.
+
+### An example of applying the consistency theorem
+
+We wish to show that *M* = (*N*, *max*) is consistent, where *N* denotes the
+set of natural numbers and *max* is the maximum function, e.g. *max*(3, 6) = 6.
+
+> *This example is a little contrived, as it's easy enough to show _max_ is
+> idempotent, commutative, and associative, however it's a decent demonstration
+> of the above proofwriting mechanism in action.*
+
+We start by constructing a model known to be consistent, *M'* = (*P*(*N*),
+&cup;), where *P*(*N*) denotes the power set of *N*. In other words, our state
+objects are finite sets of natural numbers, and we merge sets by taking the
+union. Define *T* : *P*(*N*) &rarr; *N* to be the function that maps a set to
+its maximum element, or 0 if the set is empty, e.g. *T*({3, 8, 4}) = 8, and
+*T*(&empty;) = 0.
+
+We now claim that *M* is consistent, a claim we will prove by showing that
+*max*(*T*(*A*), *T*(*B*)) = *T*(*A* &cup; *B*) for any two finite subsets *A*,
+*B* of *N*. Let the maximum element of *A* be *a* and the maximum element of
+*B* be *b*. It follows that the maximum element of *A* &cup; *B* (i.e., *T*(*A*
+&cup; *B*)) will be *max*(*a*, *b*). (If it were a different element *c*, then
+*c* would be in either *A* or *B* and greater than both *a* and *b*,
+contradicting our assumption that *a* and *b* are maximums.)
+
+Observe that *max*(*T*(*A*), *T*(*B*)) = *max*(*a*, *b*) = *T*(*A* &cup; *B*).
+Therefore, by the consistency theorem, *M* is consistent.

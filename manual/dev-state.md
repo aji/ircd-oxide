@@ -5,84 +5,107 @@ To portray a single abstract "network" with a cluster of independent servers,
 state at some level. This topic is called "distributed consensus" and has been
 studied quite extensively in both academic and practical contexts.
 
-## Eventual consensus
+Within `ircd-oxide`, a number of terms are used when discussing state, which we
+define here. A *stateful* thing is any thing that can change over time in
+response to events, in particular something that all nodes in the cluster must
+be aware of. A *state object* is the in-memory representation of some stateful
+thing. For a given stateful thing, the corresponding state object should
+contain the necessary information to determine the true state. A *merge* is the
+action taken to reconcile diverged state objects into a new state object. For
+simplicity's sake, all state changes are modeled as merges. The *state model*
+is the collective name for the set of possible state objects, the associated
+merge operation, and the function to determine the true state for some state
+object, if defined.
+
+## Consistency model
 
 `ircd-oxide` takes a relatively simple approach to distributed consensus in
 that every node is allowed to make its own decisions independently with the
 understanding that the decision can be superseded at any time by a decision
 made by any other node, however *all* nodes will eventually agree on what the
-actual decision was. In this way, it is a sort of eventual consensus, which
-happens to be good enough for our use case.
+actual decision was. This is weaker than the typical use of the term
+"consensus", but is sufficient for our use case. In the context of CAP theorem,
+we are giving up strong consistency in favor of availability and partition
+tolerance.
 
-Eventual consensus is accomplished by requiring state to be mergeable. A
-stateful type must have a `merge` operation. If a piece of state were a set,
-this would be analogous to ∪, the set union operation. All state changes are
-implemented as `merge` operations, and servers communicate a state change by
-broadcasting the new state in its entirety. **As long as all servers see all
-new state, at any point in time, in any order, allowing duplicates, they will
-come to the same conclusion for the final state.**
+### Consistency, as we define it
 
-### Proof of consensus
+The goal then is to define, for each stateful thing, a *state model* that is
+consistent. We consider a state model *consistent* if its merge operation is
+idempotent, commutative, and associative. More formally, a merge function *m* :
+*S* &times; *S* &rarr; *S* for some set of possible state objects *S* should
+satisfy all of the following conditions:
 
-We will expand on this analogy and prove that this model lets us eventually
-reach consensus. Suppose our piece of state is a set of arbitrary objects and
-we can only construct new sets and take unions of sets. At some arbitrary point
-in time, suppose all nodes agree that the current state of the set is *S* = {
-*A*, *B*, *C* }. Then suppose that two nodes decide to update this state. One
-wishes *X* to be included in the set, the other *Y*. The first node takes the
-union of *S* and { *X* }, and obtains *S<sub>x</sub>* = { *A*, *B*, *C*, *X* }.
-The second node similarly obtains *S<sub>y</sub>* = { *A*, *B*, *C*, *Y* }.
-Both nodes broadcast the new sets. Suppose a node receives *S<sub>x</sub>*
-first. They will take the union of their stored state *S* and the incoming
-state *S<sub>x</sub>* and arrive at *S<sub>x</sub>*. When *S<sub>y</sub>*
-arrives, they will take the union of their stored state *S<sub>x</sub>* and the
-incoming state *S<sub>y</sub>* and arrive at a new set *S<sub>xy</sub>* = {
-*A*, *B*, *C*, *X*, *Y* }. If *S<sub>y</sub>* were to arrive before
-*S<sub>x</sub>*, the node would arrive at the same result.  It's also clear
-that if a message were to arrive more than once, the final result would not
-change. Therefore, with this model, all nodes will eventually agree that
-*S<sub>xy</sub>* is the current state of the data.
+  *  Idempotency: For any *s* &isin; *S*,
+     *m*(*s*, *s*) = *s*.
+  *  Commutativity: For any *s*, *t* &isin; *S*,
+     *m*(*s*, *t*) = *m*(*t*, *s*)
+  *  Associativity: For some *r*, *s*, *t* &isin; *S*,
+     *m*(*m*(*r*, *s*), *t*) = *m*(*r*, *m*(*s*, *t*))
 
-Seeing as we can achieve consistency by using sets as state and performing set
-union for updates, we can map this model to IRC. Suppose we store channel
-topics as sets of every value the topic has had over time. By the above proof,
-this would clearly allow all servers to agree on the final state of the set of
-topics. However, we do not usually think of a channel topic as being a set of
-possible values. A channel only ever has one topic!
+With these conditions, we are guaranteed that if any two nodes have merged the
+same set of state objects, in any order, with any duplicates, they will end up
+with the same state object. This is an important conclusion! Informally, if
+node A sees messages 1 2 3 and node B sees messages 3 1 2 1, then A and B will
+still agree on the final outcome of processing those messages.
 
-We can get around this issue by requiring servers to look at a set of possible
-topics and to pick, independently of all other factors, what the *true* topic
-is. As long as every server has the same set of possible topics, they will all
-agree on the true topic. How this choice is implemented could be completely
-arbitrary. Servers could pick the topic that comes first lexicographically, or
-the topic that has the most occurrences of the letter 'a' breaking ties by
-counting the number of 'b', etc. The exact critera is not important, as long as
-it can be applied consistently by all servers.
+Note that if a node has yet to receive some message, its opinion of what the
+true state is will be outdated in an undetectable way! This is why our model is
+merely *eventually* consistent, not *strongly* consistent. However, it allows
+us to be partition tolerant while still letting users make changes to the
+system. When the two halves of a partition are healed, nodes will exchange and
+merge state objects and once again reach a consistent state.
 
-While arbitrary criteria would work, it's important for usability that the
-criteria have some connection to "fairness". For channel topics, the measure
-that is commonly used is the time the topic was set as reported by the host
-making the change. While it's true that this doesn't accurately reflect the
-"true" ordering of events in real world time, it's often considered "good
-enough". Topics don't change often enough for it to be a problem.
+### A simple, consistent state model
 
-> <span style="font-size:small;font-style:italic">
-> As an aside, it should be pointed out that the TS6 protocol puts rather
-> complicated semantics on topic timestamps.  Timestamps presented during
-> netjoin are handled specially, giving the *older* topic precedence. This is
-> to prevent abuse during netsplits where users on a small enough half of the
-> split can take control of the channel and change the topic maliciously.  Due
-> to `ircd-oxide`'s channel management principles, however, this sort of
-> misbehavior is not possible, so we can safely take the newest topic in all
-> cases.</span>
+We construct now a simple state model that has these properties. Let *I* be
+some arbitrary "information set" whose elements are atomic pieces of
+information. We define *S* = *P*(*I*) to be our set of state objects, where *P*
+denotes the power set operation. In other words, a state object in this model
+is some finite subset of *I*, the set of possible information. The merge
+operation *m* is defined as *m*(*a*, *b*) = *a* &cup; *b*. Clearly, *m*
+satisfies all our conditions for consistency. Therefore, our state model is
+consistent.
 
-So far, our "topic state" is actually a set of all updated topics and the time
-they were set. When choosing the topic to present to users, the server looks
-for the topic with the newest timestamp. However, since storing and
-transmitting the complete history of topics can be problematic, we can actually
-get away with only storing and transmitting the newest topic. Consider that the
-act of taking the union of two topic histories and picking the newest item has
-the same effect as taking the newest item from two topic histories and picking
-the newer one. Reread that sentence carefully! As a result of this, we can get
-away with only storing and transmitting the newest topic we've ever seen for a
-channel, and performing a "merge" by picking the newer of the two topics.
+Consider further, for this state model, a function *t* : *S* &rarr; *X* that
+determines, for a given finite subset of *I*, the "true state" *x* &isin; *X*.
+Observe that *t*(*s*) for any state object *s* will have the same consistency
+properties as *s* itself.
+
+### A construction for consistent state models
+
+Therefore, we can choose
+
+  1. an information set *I*,
+  2. an arbitrary set *X*,
+  3. and a true state function *t* : *P*(*I*) &rarr; *X*, where *P* denotes the
+     power set,
+
+and construct a state model that is consistent for elements of *X*, using
+subsets of *I* to trigger selection of new elements of *X*.
+
+### Slimming it down
+
+Sending around subsets of *I* and merging by set union, while theoretically
+sound, is simply impractical. However, this model gives us a framework with
+which to prove the consistency of more practical models.
+
+As a simple example, suppose all servers must eventually agree on some element
+of a set *X*. We choose our information set *I* to be pairs (*c*, *x*) where
+*c* is a clock (a timestamp such that no two servers can generate the same
+timestamp) and *x* is an element of *X*. Our true state function *t* looks at a
+set of pairs and picks the element *x* from the pair with the greatest *c*.  It
+is sufficient for the state object to be such a pair (*c*, *x*), and perform
+merges by picking the pair with the greatest *c*. Consider two state objects
+*s1* and *s2* under the set-based model, i.e. *s1* and *s2* are sets of pairs.
+Observe that computing *t*(*s1* &cup; *s2*) is equivalent to computing *t*(*s1*)
+and *t*(*s2*) and picking the pair with the greatest *c*. Therefore, it is
+sufficient to store only the pair *t*(*s1*).
+
+> Aside: I have not yet really developed a solid proofwriting tool for deriving
+> a model's consistency from another's. I'm thinking the basic idea will be to
+> take a known consistent state model *M1* = (*S1*, *m1*, *t1*) and the state
+> model whose consistency is being proven *M2* = (*S2*, *m2*, *t2*) and define
+> a function *f* from *S1* to *S2*. At this point, if it can be shown that
+> *f*(*m1*(*a*, *b*)) equals *m2*(*f*(*a*), *f*(*b*)) for arbitrary *a*, *b*
+> &isin; *S1*, then *M2* is consistent.

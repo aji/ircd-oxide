@@ -100,7 +100,23 @@ impl<'a> Parser<'a> {
                 Err(XencError) // missing 'e'
             },
 
-            b'd' => Err(XencError),
+            b'd' => {
+                let mut v = HashMap::new();
+                self.getch();
+                while !self.empty() {
+                    if b'e' == self.peek() {
+                        self.getch();
+                        return Ok(Value::Dict(v));
+                    } else {
+                        let k = match try!(self.next()) {
+                            Value::Octets(k) => k,
+                            _ => return Err(XencError) // non-string key
+                        };
+                        v.insert(k, try!(self.next()));
+                    }
+                }
+                Err(XencError) // missing 'e'
+            },
 
             _ => Err(XencError)
         }
@@ -179,4 +195,20 @@ fn test_very_nested_list() {
         ])),
         decode("lllllleeeeee")
     );
+}
+
+#[test]
+fn test_simple_dict() {
+    let mut d = HashMap::new();
+    d.insert(b"abc".to_vec(), Value::I64(3));
+    d.insert(b"def".to_vec(), Value::Octets(b"123".to_vec()));
+
+    assert_eq!(
+        Ok(Value::Dict(d)),
+        decode("d3:abci3e3:def3:123e")
+    );
+
+    assert_eq!(Err(XencError), decode("d3:abce")); // missing value
+    assert_eq!(Err(XencError), decode("d3:abci0e")); // end of input
+    assert_eq!(Err(XencError), decode("di0ei0ee")); // non-string key
 }

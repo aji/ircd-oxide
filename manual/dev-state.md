@@ -36,11 +36,11 @@ idempotent, commutative, and associative. More formally, a merge function *m* :
 *S* &times; *S* &rarr; *S* for some set of possible state objects *S* should
 satisfy all of the following conditions:
 
-  *  Idempotency: For any *s* &isin; *S*,
+  1. Idempotency: For any *s* &isin; *S*,
      *m*(*s*, *s*) = *s*.
-  *  Commutativity: For any *s*, *t* &isin; *S*,
+  2. Commutativity: For any *s*, *t* &isin; *S*,
      *m*(*s*, *t*) = *m*(*t*, *s*)
-  *  Associativity: For some *r*, *s*, *t* &isin; *S*,
+  3. Associativity: For some *r*, *s*, *t* &isin; *S*,
      *m*(*m*(*r*, *s*), *t*) = *m*(*r*, *m*(*s*, *t*))
 
 With these conditions, we are guaranteed that if any two nodes have merged the
@@ -90,22 +90,58 @@ Sending around subsets of *I* and merging by set union, while theoretically
 sound, is simply impractical. However, this model gives us a framework with
 which to prove the consistency of more practical models.
 
-As a simple example, suppose all servers must eventually agree on some element
-of a set *X*. We choose our information set *I* to be pairs (*c*, *x*) where
-*c* is a clock (a timestamp such that no two servers can generate the same
-timestamp) and *x* is an element of *X*. Our true state function *t* looks at a
-set of pairs and picks the element *x* from the pair with the greatest *c*.  It
-is sufficient for the state object to be such a pair (*c*, *x*), and perform
-merges by picking the pair with the greatest *c*. Consider two state objects
-*s1* and *s2* under the set-based model, i.e. *s1* and *s2* are sets of pairs.
-Observe that computing *t*(*s1* &cup; *s2*) is equivalent to computing *t*(*s1*)
-and *t*(*s2*) and picking the pair with the greatest *c*. Therefore, it is
-sufficient to store only the pair *t*(*s1*).
+Fortunately, if we wish to prove a model *M*<sub>1</sub> = (*S*<sub>1</sub>,
+*m*<sub>1</sub>) is consistent, we can choose a model *M*<sub>2</sub> =
+(*S*<sub>2</sub>, *m*<sub>2</sub>) which is known to be consistent and a
+surjective transformation function *T* : *S*<sub>2</sub> &rarr; *S*<sub>1</sub>
+and show that *m*<sub>1</sub>(*T*(*s*), *T*(*t*)) = *T*(*m*<sub>2</sub>(*s*,
+*t*)) holds for any *s*, *t* &isin; *S*<sub>2</sub>.
 
-> Aside: I have not yet really developed a solid proofwriting tool for deriving
-> a model's consistency from another's. I'm thinking the basic idea will be to
-> take a known consistent state model *M1* = (*S1*, *m1*) and the state model
-> whose consistency is being proven *M2* = (*S2*, *m2*) and define a function
-> *f* from *S1* to *S2*. At this point, if it can be shown that *f*(*m1*(*a*,
-> *b*)) equals *m2*(*f*(*a*), *f*(*b*)) for arbitrary *a*, *b* &isin; *S1*,
-> then *M2* is consistent.
+This proof is nasty, so don't read it if you don't truly care about why the
+above works. We can prove that this implies the consistency of *M*<sub>1</sub>
+by showing that each of the 3 conditions for consistency *m*<sub>2</sub> is
+required to meet imply the same condition on *m*<sub>1</sub>. Since
+*m*<sub>1</sub> meets all three criteria, *M*<sub>1</sub> is consistent.
+
+ 1. Idempotency:
+    * *m*<sub>2</sub>(*x*, *x*) = *x*
+      &nbsp;&nbsp;&nbsp;for any *x* &isin; *S*<sub>2</sub>
+    * *T*(*m*<sub>2</sub>(*x*, *x*)) = *T*(*x*)
+    * *m*<sub>1</sub>(*T*(*x*), *T*(*x*)) = *T*(*x*)
+    * *m*<sub>1</sub>(*y*, *y*) = *y*
+      &nbsp;&nbsp;&nbsp;for any *y* &isin; *S*<sub>1</sub> (by surjectivity)
+    * Therefore, *m*<sub>1</sub> is idempotent
+
+ 2. Commutativity
+    * *m*<sub>2</sub>(*a*, *b*) = *m*<sub>2</sub>(*b*, *a*)
+      &nbsp;&nbsp;&nbsp;for any *a*, *b*
+      &isin; *S*<sub>2</sub>
+    * *T*(*m*<sub>2</sub>(*a*, *b*) = *T*(*m*<sub>2</sub>(*b*, *a*))
+    * *m*<sub>1</sub>(*T*(*a*), *T*(*b*)) = *m*<sub>1</sub>(*T*(*b*), *T*(*a*))
+    * *m*<sub>1</sub>(*c*, *d*) = *m*<sub>1</sub>(*d*, *c*)
+      &nbsp;&nbsp;&nbsp;for any *c*, *d* &isin; *S*<sub>1</sub> (by
+      surjectivity)
+    * Therefore, *m*<sub>1</sub> is commutative
+
+ 3. Associativity
+    * *m*<sub>2</sub>(*r*, *m*<sub>2</sub>(*s*, *t*)) =
+      *m*<sub>2</sub>(*m*<sub>2</sub>(*r*, *s*), *t*)
+      &nbsp;&nbsp;&nbsp;for any *r*, *s*, *t* &isin; *S*<sub>2</sub>
+    * *T*(*m*<sub>2</sub>(*r*, *m*<sub>2</sub>(*s*, *t*)) =
+      *T*(*m*<sub>2</sub>(*m*<sub>2</sub>(*r*, *s*), *t*))
+    * *m*<sub>1</sub>(*T*(*r*), *T*(*m*<sub>2</sub>(*s*, *t*))) =
+      *m*<sub>1</sub>(*T*(*m*<sub>2</sub>(*r*, *s*)), *T*(*t*))
+    * *m*<sub>1</sub>(*T*(*r*), *m*<sub>1</sub>(*T*(*s*), *T*(*t*))) =
+      *m*<sub>1</sub>(*m*<sub>1</sub>(*T*(*r*), *T*(*s*)), *T*(*t*))
+    * *m*<sub>1</sub>(*x*, *m*<sub>1</sub>(*y*, *z*)) =
+      *m*<sub>1</sub>(*m*<sub>1</sub>(*x*, *y*), *z*)
+      &nbsp;&nbsp;&nbsp;for any *x*, *y*, *z* &isin; *S*<sub>1</sub>,
+      by surjectivity.
+    * Therefore, *m*<sub>1</sub> is associative
+
+Don't worry if your eyes glossed over during that last part. The Markdown
+source is even less readable. It's just some substitutions to show that the 3
+consistency criteria on *m*<sub>2</sub> and the equivalence defined above lead
+to the 3 criteria holding for *m*<sub>1</sub> as well. I've included the proof
+here for the sake of completeness, so that readers can choose to verify my
+conclusion if they wish.

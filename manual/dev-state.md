@@ -104,8 +104,8 @@ sufficient to store only the pair *t*(*s1*).
 
 > Aside: I have not yet really developed a solid proofwriting tool for deriving
 > a model's consistency from another's. I'm thinking the basic idea will be to
-> take a known consistent state model *M1* = (*S1*, *m1*, *t1*) and the state
-> model whose consistency is being proven *M2* = (*S2*, *m2*, *t2*) and define
-> a function *f* from *S1* to *S2*. At this point, if it can be shown that
-> *f*(*m1*(*a*, *b*)) equals *m2*(*f*(*a*), *f*(*b*)) for arbitrary *a*, *b*
-> &isin; *S1*, then *M2* is consistent.
+> take a known consistent state model *M1* = (*S1*, *m1*) and the state model
+> whose consistency is being proven *M2* = (*S2*, *m2*) and define a function
+> *f* from *S1* to *S2*. At this point, if it can be shown that *f*(*m1*(*a*,
+> *b*)) equals *m2*(*f*(*a*), *f*(*b*)) for arbitrary *a*, *b* &isin; *S1*,
+> then *M2* is consistent.

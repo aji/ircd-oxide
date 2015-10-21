@@ -78,6 +78,11 @@ impl Value {
     }
 }
 
+/// A trait for things that can be deserialized from XENC values
+pub trait FromXenc: Sized {
+    fn from_xenc(x: Value) -> Option<Self>;
+}
+
 /// An error during parse
 #[derive(Debug, PartialEq, Eq)]
 pub struct XencError;

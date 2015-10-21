@@ -6,6 +6,7 @@
 
 extern crate time;
 
+use std::convert::From;
 use std::fmt;
 
 #[derive(Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -19,6 +20,23 @@ impl Sid {
 
     pub fn identity() -> Sid {
         Sid::new("000")
+    }
+}
+
+impl<'a> From<&'a [u8]> for Sid {
+    fn from(v: &[u8]) -> Sid {
+        match v.len() {
+            0 => Sid([   0,    0,    0]),
+            1 => Sid([v[0],    0,    0]),
+            2 => Sid([v[0], v[1],    0]),
+            _ => Sid([v[0], v[1], v[2]]),
+        }
+    }
+}
+
+impl From<Sid> for Vec<u8> {
+    fn from(s: Sid) -> Vec<u8> {
+        vec![s.0[0], s.0[1], s.0[2]]
     }
 }
 

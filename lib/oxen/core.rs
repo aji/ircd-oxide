@@ -6,6 +6,8 @@
 
 //! The core Oxen logic
 
+#![allow(unused_variables)] // grumble grumble
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::From;

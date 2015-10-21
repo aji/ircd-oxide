@@ -11,7 +11,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::From;
-use std::marker::PhantomData;
 
 use oxen::OxenBack;
 use oxen::lc::LastContact;
@@ -19,14 +18,13 @@ use util::Sid;
 use xenc;
 use xenc::FromXenc;
 
-pub struct Oxen<B: OxenBack> {
+pub struct Oxen {
     me: Sid,
     peers: HashSet<Sid>,
-    _back: PhantomData<B>
 }
 
-impl<B: OxenBack> Oxen<B> {
-    pub fn new(me: Sid) -> Oxen<B> {
+impl Oxen {
+    pub fn new(me: Sid) -> Oxen {
         Oxen {
             me: me,
             peers: {
@@ -34,19 +32,21 @@ impl<B: OxenBack> Oxen<B> {
                 h.insert(me);
                 h
             },
-            _back: PhantomData
         }
     }
 
-    pub fn add_peer(&mut self, back: &mut B, sid: Sid) {
+    pub fn add_peer<B>(&mut self, back: &mut B, sid: Sid)
+    where B: OxenBack {
         self.peers.insert(sid);
     }
 
-    pub fn forget_peer(&mut self, back: &mut B, sid: Sid) {
+    pub fn forget_peer<B>(&mut self, back: &mut B, sid: Sid)
+    where B: OxenBack {
         self.peers.remove(&sid);
     }
 
-    pub fn incoming(&mut self, back: &mut B, from: Option<Sid>, data: Vec<u8>) {
+    pub fn incoming<B>(&mut self, back: &mut B, from: Option<Sid>, data: Vec<u8>)
+    where B: OxenBack {
         let pkt = match xenc::Parser::new(&data[..]).next() {
             Ok(x) => match Packet::from_xenc(x) {
                 Some(pkt) => pkt,
@@ -68,19 +68,24 @@ impl<B: OxenBack> Oxen<B> {
         }
     }
 
-    pub fn timeout(&mut self, back: &mut B, timer: B::Timer) {
+    pub fn timeout<B>(&mut self, back: &mut B, timer: B::Timer)
+    where B: OxenBack {
     }
 
-    pub fn send_broadcast(&mut self, back: &mut B, data: Vec<u8>) {
+    pub fn send_broadcast<B>(&mut self, back: &mut B, data: Vec<u8>)
+    where B: OxenBack {
     }
 
-    pub fn send_one(&mut self, back: &mut B, to: Sid, data: Vec<u8>) {
+    pub fn send_one<B>(&mut self, back: &mut B, to: Sid, data: Vec<u8>)
+    where B: OxenBack {
     }
 
-    fn forward(&mut self, back: &mut B, pkt: Packet) {
+    fn forward<B>(&mut self, back: &mut B, pkt: Packet)
+    where B: OxenBack {
     }
 
-    fn handle(&mut self, back: &mut B, pkt: Packet) {
+    fn handle<B>(&mut self, back: &mut B, pkt: Packet)
+    where B: OxenBack {
     }
 }
 

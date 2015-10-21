@@ -18,6 +18,15 @@ doctest = false
 bench = false
 doc = false
 
+[[bin]]
+name = "oxensim"
+path = "oxensim/main.rs"
+test = false
+doctest = false
+bench = false
+doc = false
+
 [dependencies]
+rand = "*"
 time = "*"
 log = "*"

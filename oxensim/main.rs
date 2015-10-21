@@ -56,9 +56,11 @@ fn main() {
 
     let cfg = netsim::NetConfig::complete(
         &[n1, n2, n3, n4, n5],
-        0.01, // 1% packet loss between all hosts
-        0.06, 0.02, // ~60ish ms latency between hosts
+        0.10, // 1% packet loss between all hosts
+        2.00, 1.00, // ~60ish ms latency between hosts
     );
+
+    let mut net = netsim::NetSim::new(&cfg);
 
     let mut nodes = HashMap::new();
     nodes.insert(n1, Oxen::new(n1));
@@ -67,5 +69,18 @@ fn main() {
     nodes.insert(n4, Oxen::new(n4));
     nodes.insert(n5, Oxen::new(n5));
 
-    netsim::run(&cfg, nodes, Duration::minutes(10));
+    net.queue_send(
+        time::get_time(),
+        n1, n2, b"d2:to3:0N4e".to_vec()
+    );
+    net.queue_send(
+        time::get_time() + Duration::seconds(1),
+        n1, n2, b"d2:to3:0N4e".to_vec()
+    );
+    net.queue_send(
+        time::get_time() + Duration::seconds(2),
+        n1, n3, b"d2:to3:0N3e".to_vec()
+    );
+
+    netsim::run(net, nodes, Duration::minutes(2));
 }

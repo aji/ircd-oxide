@@ -284,14 +284,11 @@ impl<'r, 'ns> OxenBack for BackSim<'r, 'ns> {
 }
 
 pub fn run<'cfg>(
-    cfg: &'cfg NetConfig,
+    mut sim: NetSim<'cfg>,
     mut nodes: HashMap<Sid, Oxen>,
     dur: Duration
 ) {
-    let start = get_time();
-    let end = start + dur;
-
-    let mut sim = NetSim::new(cfg);
+    let end = get_time() + dur;
 
     loop {
         let evt = match sim.next_event() {
@@ -302,7 +299,7 @@ pub fn run<'cfg>(
             },
         };
 
-        match evt {
+        let time = match evt {
             Event::Packet(p) => {
                 let mut back = BackSim {
                     sim: &mut sim,
@@ -312,6 +309,7 @@ pub fn run<'cfg>(
                 if let Some(n) = nodes.get_mut(&p.to) {
                     n.incoming(&mut back, Some(p.from), p.data);
                 }
+                p.deliver
             },
 
             Event::Timer(t) => {
@@ -323,7 +321,13 @@ pub fn run<'cfg>(
                 if let Some(n) = nodes.get_mut(&t.on) {
                     n.timeout(&mut back, t.token);
                 }
+                t.fire
             },
+        };
+
+        if time > end {
+            info!("all done!");
+            return;
         }
     }
 }

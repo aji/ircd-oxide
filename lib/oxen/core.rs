@@ -61,10 +61,18 @@ impl Oxen {
             },
         };
 
+        let now = back.get_time();
+
         if pkt.to != self.me {
-            self.forward(back, pkt);
+            info!("{}.{:03}: {}: forwarding to {}",
+                    now.sec, now.nsec / 1000000, self.me, pkt.to);
+            back.queue_send(pkt.to, data);
         } else {
-            self.handle(back, pkt);
+            if let Some(sid) = from {
+                info!("{}.{:03}: {}: pinging {}",
+                        now.sec, now.nsec / 1000000, self.me, sid);
+                back.queue_send_xenc(sid, Packet { to: sid });
+            }
         }
     }
 
@@ -77,10 +85,6 @@ impl Oxen {
     }
 
     pub fn send_one<B>(&mut self, back: &mut B, to: Sid, data: Vec<u8>)
-    where B: OxenBack {
-    }
-
-    fn forward<B>(&mut self, back: &mut B, pkt: Packet)
     where B: OxenBack {
     }
 

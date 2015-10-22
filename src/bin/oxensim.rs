@@ -394,8 +394,8 @@ fn main() {
 
     let cfg = NetConfig::complete(
         &[n1, n2, n3, n4, n5],
-        0.10, // 1% packet loss between all hosts
-        2.00, 1.00, // ~60ish ms latency between hosts
+        0.01, // 1% packet loss between all hosts
+        0.06, 0.01, // ~60ish ms latency between hosts
     );
 
     let mut net = NetSim::new(&cfg);

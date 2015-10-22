@@ -65,6 +65,10 @@ impl Oxen {
 
     pub fn incoming<B>(&mut self, back: &mut B, from: Option<Sid>, data: Vec<u8>)
     where B: OxenBack {
+        if let Some(from) = from {
+            info!("data from {}", from);
+            self.lc.put(back.me(), from, back.get_time());
+        }
     }
 
     pub fn timeout<B>(&mut self, back: &mut B, timer: Timer)
@@ -98,6 +102,14 @@ impl Oxen {
     where B: OxenBack {
         info!("checking expiring last contact...");
         self.lc_timer = back.timer_set(Duration::seconds(10));
+
+        for p in self.peers.iter() {
+            let age = back.get_time() - self.lc.get(&back.me(), p);
+            if age.num_seconds() > 10 {
+                info!("{} became stale; pinging", p);
+                back.queue_send(*p, Vec::new());
+            }
+        }
     }
 }
 

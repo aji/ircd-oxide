@@ -104,6 +104,9 @@ impl Oxen {
         self.lc_timer = back.timer_set(Duration::seconds(10));
 
         for p in self.peers.iter() {
+            if back.me() == *p {
+                continue;
+            }
             let age = back.get_time() - self.lc.get(&back.me(), p);
             if age.num_seconds() > 10 {
                 info!("{} became stale; pinging", p);

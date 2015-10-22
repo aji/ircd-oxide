@@ -434,8 +434,6 @@ fn main() {
         0.06, 0.01, // ~60ish ms latency between hosts
     );
 
-    cfg.partition(&[n1, n2]);
-
     let mut net = NetSim::new(&cfg, pfx);
     let mut nodes = HashMap::new();
     let now = time::get_time();

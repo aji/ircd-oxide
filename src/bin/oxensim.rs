@@ -1,3 +1,11 @@
+extern crate rand;
+extern crate time;
+
+#[macro_use]
+extern crate log;
+
+extern crate ircd;
+
 use rand::{thread_rng, Rng};
 use rand::distributions::{Normal, IndependentSample};
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -8,7 +16,7 @@ use time::{Duration, Timespec};
 use ircd::util::{Sid, Table};
 use ircd::oxen::{Oxen, OxenBack};
 
-pub type Timer = u64;
+type Timer = u64;
 
 struct PendingPacket {
     deliver: Timespec,
@@ -63,12 +71,12 @@ impl PartialEq for PendingTimer {
 
 impl Eq for PendingTimer { }
 
-pub enum Event {
+enum Event {
     Packet(PendingPacket),
     Timer(PendingTimer),
 }
 
-pub struct NetConfig {
+struct NetConfig {
     peers: HashSet<Sid>,
 
     // packet loss, in range 0 to 1, as a ratio of lost packets
@@ -80,7 +88,7 @@ pub struct NetConfig {
 }
 
 impl NetConfig {
-    pub fn complete(
+    fn complete(
         peers: &[Sid],
         loss: f64,
         latency_mean: f64, latency_dev: f64
@@ -103,15 +111,15 @@ impl NetConfig {
         cfg
     }
 
-    pub fn set_packet_loss(&mut self, from: Sid, to: Sid, loss: f64) {
+    fn set_packet_loss(&mut self, from: Sid, to: Sid, loss: f64) {
         self.packet_loss.put(from, to, loss);
     }
 
-    pub fn set_latency(&mut self, from: Sid, to: Sid, mean: f64, dev: f64) {
+    fn set_latency(&mut self, from: Sid, to: Sid, mean: f64, dev: f64) {
         self.latency.put(from, to, Normal::new(mean, dev));
     }
 
-    pub fn partition(&mut self, sids: &[Sid]) {
+    fn partition(&mut self, sids: &[Sid]) {
         let qs: HashSet<Sid> = sids.iter().cloned().collect();
 
         let loss = &mut self.packet_loss;
@@ -163,7 +171,7 @@ impl NetConfig {
     }
 }
 
-pub struct NetSim<'cfg> {
+struct NetSim<'cfg> {
     packets: BinaryHeap<PendingPacket>,
     timers: BinaryHeap<PendingTimer>,
     canceled_timers: HashSet<Timer>,
@@ -172,7 +180,7 @@ pub struct NetSim<'cfg> {
 }
 
 impl<'cfg> NetSim<'cfg> {
-    pub fn new(config: &'cfg NetConfig) -> NetSim<'cfg> {
+    fn new(config: &'cfg NetConfig) -> NetSim<'cfg> {
         NetSim {
             packets: BinaryHeap::new(),
             timers: BinaryHeap::new(),
@@ -182,7 +190,7 @@ impl<'cfg> NetSim<'cfg> {
         }
     }
 
-    pub fn queue_send(
+    fn queue_send(
         &mut self, now: Timespec,
         from: Sid, to: Sid, data: Vec<u8>
     ) {
@@ -206,7 +214,7 @@ impl<'cfg> NetSim<'cfg> {
         })
     }
 
-    pub fn queue_timer(&mut self, fire: Timespec, on: Sid, tok: Timer) {
+    fn queue_timer(&mut self, fire: Timespec, on: Sid, tok: Timer) {
         self.timers.push(PendingTimer {
             fire: fire,
             on: on,
@@ -214,7 +222,7 @@ impl<'cfg> NetSim<'cfg> {
         })
     }
 
-    pub fn cancel_timer(&mut self, tok: Timer) {
+    fn cancel_timer(&mut self, tok: Timer) {
         self.canceled_timers.insert(tok);
     }
 
@@ -233,7 +241,7 @@ impl<'cfg> NetSim<'cfg> {
         }
     }
 
-    pub fn next_event(&mut self) -> Option<Event> {
+    fn next_event(&mut self) -> Option<Event> {
         self.clear_canceled_timers();
 
         let take_timer = {
@@ -257,7 +265,7 @@ impl<'cfg> NetSim<'cfg> {
     }
 }
 
-pub struct BackSim<'r, 'ns: 'r> {
+struct BackSim<'r, 'ns: 'r> {
     sim: &'r mut NetSim<'ns>,
     now: Timespec,
     me: Sid,
@@ -285,7 +293,7 @@ impl<'r, 'ns> OxenBack for BackSim<'r, 'ns> {
     }
 }
 
-pub fn oxen<'a, 'cfg>(
+fn oxen<'a, 'cfg>(
     sim: &'a mut NetSim<'cfg>,
     peer: Sid,
     now: Timespec,
@@ -299,7 +307,7 @@ pub fn oxen<'a, 'cfg>(
     Oxen::new(&mut back)
 }
 
-pub fn run<'cfg>(
+fn run<'cfg>(
     mut sim: NetSim<'cfg>,
     mut nodes: HashMap<Sid, Oxen>,
     mut now: Timespec,
@@ -347,4 +355,63 @@ pub fn run<'cfg>(
             return now;
         }
     }
+}
+
+mod logger {
+    use log;
+
+    struct SimpleLogger;
+
+    impl log::Log for SimpleLogger {
+        fn enabled(&self, metadata: &log::LogMetadata) -> bool {
+            metadata.level() <= log::LogLevel::Info
+        }
+
+        fn log(&self, record: &log::LogRecord) {
+            if self.enabled(record.metadata()) {
+                println!("{} [{}] {}",
+                    record.location().module_path(),
+                    record.level(),
+                    record.args(),
+                );
+            }
+        }
+    }
+
+    pub fn init() -> Result<(), log::SetLoggerError> {
+        log::set_logger(|max_log_level| {
+            max_log_level.set(log::LogLevelFilter::Info);
+            Box::new(SimpleLogger)
+        })
+    }
+}
+
+fn main() {
+    logger::init().ok().expect("failed to initialize logger");
+
+    info!("oxensim starting!");
+
+    let n1 = Sid::new("0N1");
+    let n2 = Sid::new("0N2");
+    let n3 = Sid::new("0N3");
+    let n4 = Sid::new("0N4");
+    let n5 = Sid::new("0N5");
+
+    let cfg = NetConfig::complete(
+        &[n1, n2, n3, n4, n5],
+        0.10, // 1% packet loss between all hosts
+        2.00, 1.00, // ~60ish ms latency between hosts
+    );
+
+    let mut net = NetSim::new(&cfg);
+    let mut nodes = HashMap::new();
+    let now = time::get_time();
+
+    nodes.insert(n1, oxen(&mut net, n1, now));
+    nodes.insert(n2, oxen(&mut net, n2, now));
+    nodes.insert(n3, oxen(&mut net, n3, now));
+    nodes.insert(n4, oxen(&mut net, n4, now));
+    nodes.insert(n5, oxen(&mut net, n5, now));
+
+    run(net, nodes, now, Duration::minutes(2));
 }

@@ -415,11 +415,11 @@ fn main() {
 
     info!("oxensim starting!");
 
-    let n1 = Sid::new("0N1");
-    let n2 = Sid::new("0N2");
-    let n3 = Sid::new("0N3");
-    let n4 = Sid::new("0N4");
-    let n5 = Sid::new("0N5");
+    let n1 = Sid::new("A__");
+    let n2 = Sid::new("_B_");
+    let n3 = Sid::new("__C");
+    let n4 = Sid::new("dd_");
+    let n5 = Sid::new("_ee");
 
     let mut cfg = NetConfig::complete(
         &[n1, n2, n3, n4, n5],

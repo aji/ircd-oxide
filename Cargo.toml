@@ -3,9 +3,6 @@ name = "ircd"
 version = "0.0.1"
 authors = ["Alex Iadicicco <alex@ajitek.net>"]
 
-[lib]
-name = "ircd"
-
 [dependencies]
 rand = "*"
 time = "*"

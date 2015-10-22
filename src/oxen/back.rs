@@ -11,21 +11,20 @@ use std::hash::Hash;
 use time::Timespec;
 use time::Duration;
 
+use oxen::Timer;
 use util::Sid;
 use xenc;
 
 pub trait OxenBack {
-    type Timer: Clone + Eq + Hash;
-
     fn get_time(&self) -> Timespec;
 
     fn me(&self) -> Sid;
 
     fn queue_send(&mut self, peer: Sid, data: Vec<u8>);
 
-    fn timer_set(&mut self, at: Duration) -> Self::Timer;
+    fn timer_set(&mut self, at: Duration) -> Timer;
 
-    fn timer_cancel(&mut self, timer: Self::Timer);
+    fn timer_cancel(&mut self, timer: Timer);
 
     fn queue_send_xenc<T>(&mut self, peer: Sid, data: T)
     where xenc::Value: From<T> {

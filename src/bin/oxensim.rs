@@ -10,13 +10,10 @@ use rand::{thread_rng, Rng};
 use rand::distributions::{Normal, IndependentSample};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp;
-use time::get_time;
-use time::{Duration, Timespec};
+use time::{Duration, Timespec, get_time};
 
 use ircd::util::{Sid, Table};
-use ircd::oxen::{Oxen, OxenBack};
-
-type Timer = u64;
+use ircd::oxen::{Oxen, OxenBack, Timer};
 
 struct PendingPacket {
     deliver: Timespec,
@@ -272,8 +269,6 @@ struct BackSim<'r, 'ns: 'r> {
 }
 
 impl<'r, 'ns> OxenBack for BackSim<'r, 'ns> {
-    type Timer = Timer;
-
     fn get_time(&self) -> Timespec { self.now }
 
     fn me(&self) -> Sid { self.me }

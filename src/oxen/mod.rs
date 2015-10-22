@@ -26,3 +26,4 @@ pub mod lc;
 
 pub use self::back::OxenBack;
 pub use self::core::Oxen;
+pub use self::core::Timer;

@@ -19,6 +19,8 @@ use util::Sid;
 use xenc;
 use xenc::FromXenc;
 
+pub type Timer = u64;
+
 pub struct Oxen {
     me: Sid,
     peers: HashSet<Sid>,
@@ -51,7 +53,7 @@ impl Oxen {
     where B: OxenBack {
     }
 
-    pub fn timeout<B>(&mut self, back: &mut B, timer: B::Timer)
+    pub fn timeout<B>(&mut self, back: &mut B, timer: Timer)
     where B: OxenBack {
     }
 

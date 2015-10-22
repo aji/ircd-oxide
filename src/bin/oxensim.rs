@@ -293,14 +293,17 @@ impl<'r, 'ns> OxenBack for BackSim<'r, 'ns> {
     }
 }
 
-fn oxen<'a, 'cfg>(
+fn oxen<'a, 'cfg, S: IndependentSample<f64>>(
     sim: &'a mut NetSim<'cfg>,
     peer: Sid,
     now: Timespec,
+    delay: &S
 ) -> Oxen {
+    let del = delay.ind_sample(&mut thread_rng()).abs();
+
     let mut back = BackSim {
         sim: sim,
-        now: now,
+        now: now + Duration::milliseconds(del as i64),
         me: peer,
     };
 
@@ -316,14 +319,18 @@ fn run<'cfg>(
     let end = now + dur;
     let peers: Vec<Sid> = nodes.keys().cloned().collect();
 
-    for p in peers.iter() {
-        for (k, q) in nodes.iter_mut() {
-            let mut back = BackSim {
-                sim: &mut sim,
-                now: now,
-                me: *k,
-            };
-            q.add_peer(&mut back, *p);
+    {
+        let delay = Normal::new(0.0, 1000.0);
+        for p in peers.iter() {
+            for (k, q) in nodes.iter_mut() {
+                let del = delay.ind_sample(&mut thread_rng()).abs();
+                let mut back = BackSim {
+                    sim: &mut sim,
+                    now: now + Duration::milliseconds(del as i64),
+                    me: *k,
+                };
+                q.add_peer(&mut back, *p);
+            }
         }
     }
 
@@ -433,11 +440,13 @@ fn main() {
     let mut nodes = HashMap::new();
     let now = time::get_time();
 
-    nodes.insert(n1, oxen(&mut net, n1, now));
-    nodes.insert(n2, oxen(&mut net, n2, now));
-    nodes.insert(n3, oxen(&mut net, n3, now));
-    nodes.insert(n4, oxen(&mut net, n4, now));
-    nodes.insert(n5, oxen(&mut net, n5, now));
+    let delay = Normal::new(1000.0, 300.0);
+
+    nodes.insert(n1, oxen(&mut net, n1, now, &delay));
+    nodes.insert(n2, oxen(&mut net, n2, now, &delay));
+    nodes.insert(n3, oxen(&mut net, n3, now, &delay));
+    nodes.insert(n4, oxen(&mut net, n4, now, &delay));
+    nodes.insert(n5, oxen(&mut net, n5, now, &delay));
 
     let now = run(net, nodes, now, Duration::hours(1));
 }

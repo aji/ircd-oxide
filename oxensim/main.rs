@@ -61,26 +61,14 @@ fn main() {
     );
 
     let mut net = netsim::NetSim::new(&cfg);
-
     let mut nodes = HashMap::new();
-    nodes.insert(n1, Oxen::new(n1));
-    nodes.insert(n2, Oxen::new(n2));
-    nodes.insert(n3, Oxen::new(n3));
-    nodes.insert(n4, Oxen::new(n4));
-    nodes.insert(n5, Oxen::new(n5));
+    let now = time::get_time();
 
-    net.queue_send(
-        time::get_time(),
-        n1, n2, b"d2:to3:0N4e".to_vec()
-    );
-    net.queue_send(
-        time::get_time() + Duration::seconds(1),
-        n1, n2, b"d2:to3:0N4e".to_vec()
-    );
-    net.queue_send(
-        time::get_time() + Duration::seconds(2),
-        n1, n3, b"d2:to3:0N3e".to_vec()
-    );
+    nodes.insert(n1, netsim::oxen(&mut net, n1, now));
+    nodes.insert(n2, netsim::oxen(&mut net, n2, now));
+    nodes.insert(n3, netsim::oxen(&mut net, n3, now));
+    nodes.insert(n4, netsim::oxen(&mut net, n4, now));
+    nodes.insert(n5, netsim::oxen(&mut net, n5, now));
 
-    netsim::run(net, nodes, Duration::minutes(2));
+    netsim::run(net, nodes, now, Duration::minutes(2));
 }

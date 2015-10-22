@@ -4,6 +4,7 @@
 // This file is part of ircd-oxide and is protected under the terms contained in
 // the COPYING file in the project root.
 
+extern crate rand;
 extern crate time;
 
 #[macro_use]

@@ -19,6 +19,8 @@ pub trait OxenBack {
 
     fn get_time(&self) -> Timespec;
 
+    fn me(&self) -> Sid;
+
     fn queue_send(&mut self, peer: Sid, data: Vec<u8>);
 
     fn timer_set(&mut self, at: Duration) -> Self::Timer;

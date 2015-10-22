@@ -268,6 +268,8 @@ impl<'r, 'ns> OxenBack for BackSim<'r, 'ns> {
 
     fn get_time(&self) -> Timespec { self.now }
 
+    fn me(&self) -> Sid { self.me }
+
     fn queue_send(&mut self, peer: Sid, data: Vec<u8>) {
         self.sim.queue_send(self.now, self.me, peer, data);
     }
@@ -283,23 +285,38 @@ impl<'r, 'ns> OxenBack for BackSim<'r, 'ns> {
     }
 }
 
+pub fn oxen<'a, 'cfg>(
+    sim: &'a mut NetSim<'cfg>,
+    peer: Sid,
+    now: Timespec,
+) -> Oxen {
+    let mut back = BackSim {
+        sim: sim,
+        now: now,
+        me: peer,
+    };
+
+    Oxen::new(&mut back)
+}
+
 pub fn run<'cfg>(
     mut sim: NetSim<'cfg>,
     mut nodes: HashMap<Sid, Oxen>,
+    mut now: Timespec,
     dur: Duration
-) {
-    let end = get_time() + dur;
+) -> Timespec {
+    let end = now + dur;
 
     loop {
         let evt = match sim.next_event() {
             Some(evt) => evt,
             None => {
                 info!("ran out of events");
-                return;
+                return now;
             },
         };
 
-        let time = match evt {
+        now = match evt {
             Event::Packet(p) => {
                 let mut back = BackSim {
                     sim: &mut sim,
@@ -325,9 +342,9 @@ pub fn run<'cfg>(
             },
         };
 
-        if time > end {
+        if now > end {
             info!("all done!");
-            return;
+            return now;
         }
     }
 }

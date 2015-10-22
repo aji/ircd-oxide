@@ -7,6 +7,14 @@
 use std::collections::HashMap;
 use std::io;
 use std::io::prelude::*;
+use std::result;
+
+/// A simple error type
+#[derive(Debug, PartialEq, Eq)]
+pub struct Error;
+
+/// A result type
+pub type Result<T> = result::Result<T, Error>;
 
 /// An XENC value.
 ///
@@ -80,12 +88,8 @@ impl Value {
 
 /// A trait for things that can be deserialized from XENC values
 pub trait FromXenc: Sized {
-    fn from_xenc(x: Value) -> Option<Self>;
+    fn from_xenc(x: Value) -> Result<Self>;
 }
-
-/// An error during parse
-#[derive(Debug, PartialEq, Eq)]
-pub struct XencError;
 
 /// A parser
 pub struct Parser<'a> {
@@ -113,7 +117,7 @@ impl<'a> Parser<'a> {
         self.buf[self.i - 1] // XXX: could panic!
     }
 
-    fn read_i64(&mut self, delim: u8) -> Result<i64, XencError> {
+    fn read_i64(&mut self, delim: u8) -> Result<i64> {
         let mut v = 0;
 
         let neg = match self.peek() {
@@ -127,7 +131,7 @@ impl<'a> Parser<'a> {
                     v = (v * 10) + (d - b'0') as i64
                 },
                 x if x == delim => break,
-                _ => return Err(XencError) // invalid int character
+                _ => return Err(Error) // invalid int character
             }
         }
 
@@ -140,7 +144,7 @@ impl<'a> Parser<'a> {
 
     /// Fetches the next `Value` in the input slice, or an error if there was a
     /// problem with the data.
-    pub fn next(&mut self) -> Result<Value, XencError> {
+    pub fn next(&mut self) -> Result<Value> {
         match self.peek() {
             b'i' => {
                 self.getch();
@@ -154,7 +158,7 @@ impl<'a> Parser<'a> {
                 let end = self.i + len;
 
                 if end < start || end > self.buf.len() {
-                    Err(XencError) // invalid length
+                    Err(Error) // invalid length
                 } else {
                     self.i = end;
                     Ok(Value::Octets(self.buf[start..end].to_owned()))
@@ -172,7 +176,7 @@ impl<'a> Parser<'a> {
                         v.push(try!(self.next()))
                     }
                 }
-                Err(XencError) // missing 'e'
+                Err(Error) // missing 'e'
             },
 
             b'd' => {
@@ -185,21 +189,21 @@ impl<'a> Parser<'a> {
                     } else {
                         let k = match try!(self.next()) {
                             Value::Octets(k) => k,
-                            _ => return Err(XencError) // non-string key
+                            _ => return Err(Error) // non-string key
                         };
                         v.insert(k, try!(self.next()));
                     }
                 }
-                Err(XencError) // missing 'e'
+                Err(Error) // missing 'e'
             },
 
-            _ => Err(XencError)
+            _ => Err(Error)
         }
     }
 }
 
 #[cfg(test)]
-fn decode(s: &str) -> Result<Value, XencError> {
+fn decode(s: &str) -> Result<Value> {
     Parser::new(s.as_bytes()).next()
 }
 
@@ -229,14 +233,14 @@ fn test_integers() {
     assert_eq!(Ok(Value::I64(37)),   decode("i37e"));
     assert_eq!(Ok(Value::I64(-6)),   decode("i-6e"));
     assert_eq!(Ok(Value::I64(-37)),  decode("i-37e"));
-    assert_eq!(Err(XencError),       decode("i?e"));
+    assert_eq!(Err(Error),           decode("i?e"));
 }
 
 #[test]
 fn test_strings() {
     assert_eq!(Ok(Value::Octets(b"123".to_vec())),  decode("3:123"));
     assert_eq!(Ok(Value::Octets(b"123".to_vec())),  decode("3:123junk"));
-    assert_eq!(Err(XencError),                      decode("3:12"));
+    assert_eq!(Err(Error),                          decode("3:12"));
 }
 
 #[test]
@@ -250,7 +254,7 @@ fn test_simple_list() {
         decode("li3e3:123i-10ee")
     );
 
-    assert_eq!(Err(XencError), decode("li3e"));
+    assert_eq!(Err(Error), decode("li3e"));
 
     let mut p = Parser::new(b"lei0e");
     assert_eq!(Value::List(Vec::new()),  p.next().unwrap());
@@ -305,9 +309,9 @@ fn test_simple_dict() {
         decode("d3:abci3e3:def3:123e")
     );
 
-    assert_eq!(Err(XencError), decode("d3:abce")); // missing value
-    assert_eq!(Err(XencError), decode("d3:abci0e")); // end of input
-    assert_eq!(Err(XencError), decode("di0ei0ee")); // non-string key
+    assert_eq!(Err(Error), decode("d3:abce")); // missing value
+    assert_eq!(Err(Error), decode("d3:abci0e")); // end of input
+    assert_eq!(Err(Error), decode("di0ei0ee")); // non-string key
 
     let mut p = Parser::new(b"dei0e");
     assert_eq!(Value::Dict(HashMap::new()),  p.next().unwrap());

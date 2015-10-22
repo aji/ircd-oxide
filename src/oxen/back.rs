@@ -7,7 +7,6 @@
 //! The backend API that the Oxen protocol runs on top of.
 
 use std::convert::From;
-use std::hash::Hash;
 use time::Timespec;
 use time::Duration;
 
@@ -29,7 +28,7 @@ pub trait OxenBack {
     fn queue_send_xenc<T>(&mut self, peer: Sid, data: T)
     where xenc::Value: From<T> {
         let mut vec = Vec::new();
-        xenc::Value::from(data).write(&mut vec);
+        let _ = xenc::Value::from(data).write(&mut vec);
         self.queue_send(peer, vec);
     }
 }

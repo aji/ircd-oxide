@@ -10,6 +10,7 @@ use rand::{thread_rng, Rng};
 use rand::distributions::{Normal, IndependentSample};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp;
+use std::sync::{Arc, Mutex};
 use time::{Duration, Timespec, get_time};
 
 use ircd::util::{Sid, Table};
@@ -169,6 +170,8 @@ impl NetConfig {
 }
 
 struct NetSim<'cfg> {
+    log_prefix: Arc<Mutex<String>>,
+
     packets: BinaryHeap<PendingPacket>,
     timers: BinaryHeap<PendingTimer>,
     canceled_timers: HashSet<Timer>,
@@ -177,8 +180,10 @@ struct NetSim<'cfg> {
 }
 
 impl<'cfg> NetSim<'cfg> {
-    fn new(config: &'cfg NetConfig) -> NetSim<'cfg> {
+    fn new(config: &'cfg NetConfig, pfx: Arc<Mutex<String>>) -> NetSim<'cfg> {
         NetSim {
+            log_prefix: pfx,
+
             packets: BinaryHeap::new(),
             timers: BinaryHeap::new(),
             canceled_timers: HashSet::new(),
@@ -309,6 +314,18 @@ fn run<'cfg>(
     dur: Duration
 ) -> Timespec {
     let end = now + dur;
+    let peers: Vec<Sid> = nodes.keys().cloned().collect();
+
+    for p in peers.iter() {
+        for (k, q) in nodes.iter_mut() {
+            let mut back = BackSim {
+                sim: &mut sim,
+                now: now,
+                me: *k,
+            };
+            q.add_peer(&mut back, *p);
+        }
+    }
 
     loop {
         let evt = match sim.next_event() {
@@ -321,6 +338,9 @@ fn run<'cfg>(
 
         now = match evt {
             Event::Packet(p) => {
+                { sim.log_prefix.lock().map(|mut s| *s =
+                        format!("{}.{:03} {}: ", p.deliver.sec,
+                            p.deliver.nsec / 1000000, p.to)); }
                 let mut back = BackSim {
                     sim: &mut sim,
                     now: p.deliver,
@@ -333,6 +353,9 @@ fn run<'cfg>(
             },
 
             Event::Timer(t) => {
+                { sim.log_prefix.lock().map(|mut s| *s =
+                        format!("{}.{:03} {}: ", t.fire.sec,
+                            t.fire.nsec / 1000000, t.on)); }
                 let mut back = BackSim {
                     sim: &mut sim,
                     now: t.fire,
@@ -345,6 +368,8 @@ fn run<'cfg>(
             },
         };
 
+        { sim.log_prefix.lock().map(|mut s| *s = format!("")); }
+
         if now > end {
             info!("all done!");
             return now;
@@ -354,8 +379,9 @@ fn run<'cfg>(
 
 mod logger {
     use log;
+    use std::sync::{Arc, Mutex};
 
-    struct SimpleLogger;
+    struct SimpleLogger(Arc<Mutex<String>>);
 
     impl log::Log for SimpleLogger {
         fn enabled(&self, metadata: &log::LogMetadata) -> bool {
@@ -364,7 +390,8 @@ mod logger {
 
         fn log(&self, record: &log::LogRecord) {
             if self.enabled(record.metadata()) {
-                println!("{} [{}] {}",
+                println!("{}{} [{}] {}",
+                    *self.0.lock().unwrap(),
                     record.location().module_path(),
                     record.level(),
                     record.args(),
@@ -373,16 +400,18 @@ mod logger {
         }
     }
 
-    pub fn init() -> Result<(), log::SetLoggerError> {
+    pub fn init(prefix: Arc<Mutex<String>>) -> Result<(), log::SetLoggerError> {
         log::set_logger(|max_log_level| {
             max_log_level.set(log::LogLevelFilter::Info);
-            Box::new(SimpleLogger)
+            Box::new(SimpleLogger(prefix))
         })
     }
 }
 
 fn main() {
-    logger::init().ok().expect("failed to initialize logger");
+    let pfx = Arc::new(Mutex::new(String::new()));
+
+    logger::init(pfx.clone()).ok().expect("failed to initialize logger");
 
     info!("oxensim starting!");
 
@@ -392,13 +421,15 @@ fn main() {
     let n4 = Sid::new("0N4");
     let n5 = Sid::new("0N5");
 
-    let cfg = NetConfig::complete(
+    let mut cfg = NetConfig::complete(
         &[n1, n2, n3, n4, n5],
         0.01, // 1% packet loss between all hosts
         0.06, 0.01, // ~60ish ms latency between hosts
     );
 
-    let mut net = NetSim::new(&cfg);
+    cfg.partition(&[n1, n2]);
+
+    let mut net = NetSim::new(&cfg, pfx);
     let mut nodes = HashMap::new();
     let now = time::get_time();
 
@@ -408,5 +439,5 @@ fn main() {
     nodes.insert(n4, oxen(&mut net, n4, now));
     nodes.insert(n5, oxen(&mut net, n5, now));
 
-    run(net, nodes, now, Duration::minutes(2));
+    let now = run(net, nodes, now, Duration::hours(1));
 }

@@ -430,7 +430,7 @@ fn main() {
 
     let mut cfg = NetConfig::complete(
         &[n1, n2, n3, n4, n5],
-        0.01, // 1% packet loss between all hosts
+        0.51, // 1% packet loss between all hosts
         0.06, 0.01, // ~60ish ms latency between hosts
     );
 
@@ -446,5 +446,5 @@ fn main() {
     nodes.insert(n4, oxen(&mut net, n4, now, &delay));
     nodes.insert(n5, oxen(&mut net, n5, now, &delay));
 
-    let now = run(net, nodes, now, Duration::hours(1));
+    let now = run(net, nodes, now, Duration::minutes(10));
 }

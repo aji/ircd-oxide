@@ -27,9 +27,17 @@ pub struct Oxen {
     peers: HashSet<Sid>,
 
     lc: LastContact,
+    peer_status: HashMap<Sid, PeerStatus>,
 
     unack_timer: Timer,
     lc_timer: Timer,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum PeerStatus {
+    Available,
+    Expiring,
+    Unavailable,
 }
 
 impl Oxen {
@@ -38,7 +46,9 @@ impl Oxen {
         let mut oxen = Oxen {
             me: back.me(),
             peers: HashSet::new(),
+
             lc: LastContact::new(back.me()),
+            peer_status: HashMap::new(),
 
             unack_timer: 0,
             lc_timer: 0,
@@ -56,11 +66,13 @@ impl Oxen {
     pub fn add_peer<B>(&mut self, back: &mut B, sid: Sid)
     where B: OxenBack {
         self.peers.insert(sid);
+        self.peer_status.insert(sid, PeerStatus::Available);
     }
 
     pub fn forget_peer<B>(&mut self, back: &mut B, sid: Sid)
     where B: OxenBack {
         self.peers.remove(&sid);
+        self.peer_status.remove(&sid);
     }
 
     pub fn incoming<B>(&mut self, back: &mut B, from: Option<Sid>, data: Vec<u8>)
@@ -68,6 +80,9 @@ impl Oxen {
         if let Some(from) = from {
             info!("data from {}", from);
             self.lc.put(back.me(), from, back.get_time());
+            if data[..] == b"ping"[..] {
+                back.queue_send(from, b"pong".to_vec());
+            }
         }
     }
 
@@ -101,16 +116,61 @@ impl Oxen {
     fn check_last_contact<B>(&mut self, back: &mut B)
     where B: OxenBack {
         info!("checking expiring last contact...");
-        self.lc_timer = back.timer_set(Duration::seconds(10));
+        self.lc_timer = back.timer_set(Duration::milliseconds(1000));
+
+        // Peer status:
+        //                       ->Queue ping
+        //   [Available]-- LC exceeds 5s -+
+        //      ^  ^                      |
+        //      |  |                      V             ->Notify user
+        //      |  +-- LC under 5s --[Expiring]-- LC exceeds 10s -----+
+        //      |                                                     |
+        //      |              ->Notify user                          V
+        //      +----- LC under 5s -----------------------------[Unavailable]
+        // 
+        // This state transition diagram is a little more complicated than what
+        // the final protocol will actually be (only having Available and
+        // Unavailable states), driven solely by the LC table. However, we
+        // haven't implemented the heartbeats that will keep LC information
+        // updated, so for now we send some pings!
 
         for p in self.peers.iter() {
             if back.me() == *p {
                 continue;
             }
+
             let age = back.get_time() - self.lc.get(&back.me(), p);
-            if age.num_seconds() > 10 {
-                info!("{} became stale; pinging", p);
-                back.queue_send(*p, Vec::new());
+            let status = self.peer_status
+                .entry(*p)
+                .or_insert(PeerStatus::Available);
+
+            if age.num_seconds() > 5 {
+                match *status {
+                    PeerStatus::Available => {
+                        info!("{} became stale; pinging", p);
+                        *status = PeerStatus::Expiring;
+                        back.queue_send(*p, b"ping".to_vec());
+                    },
+                    PeerStatus::Expiring => {
+                        if age.num_seconds() > 10 {
+                            info!("{} is unavailable", p);
+                            *status = PeerStatus::Unavailable;
+                        }
+                    },
+                    PeerStatus::Unavailable => { },
+                }
+            } else {
+                match *status {
+                    PeerStatus::Available => { },
+                    PeerStatus::Expiring => {
+                        info!("{} is fresh", p);
+                        *status = PeerStatus::Available;
+                    },
+                    PeerStatus::Unavailable => {
+                        info!("{} is available again", p);
+                        *status = PeerStatus::Available;
+                    },
+                }
             }
         }
     }

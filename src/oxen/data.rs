@@ -6,6 +6,8 @@
 
 use std::collections::HashMap;
 use std::convert::From;
+use std::str::FromStr;
+use std::str::from_utf8_unchecked;
 
 use util::Sid;
 use xenc;
@@ -42,8 +44,8 @@ pub struct MsgAck {
 }
 
 pub struct LcGossip {
-    _rows: HashMap<Sid, Vec<f64>>,
-    _cols: Vec<Sid>,
+    rows: HashMap<Sid, Vec<f64>>,
+    cols: Vec<Sid>,
 }
 
 pub enum MsgDataBody {
@@ -229,8 +231,58 @@ impl MsgAck {
 impl LcGossip {
     fn from_xenc(map: &mut HashMap<Vec<u8>, xenc::Value>)
     -> xenc::Result<LcGossip> {
-        Err(xenc::Error)
-        // TODO
+        let lc = {
+            let lc_xenc = try!(map
+                .remove(b"lc" as &[u8])
+                .and_then(|lc| lc.into_dict())
+                .ok_or(xenc::Error)
+            );
+            let mut lc = HashMap::new();
+            for (k, v) in lc_xenc.into_iter() {
+                let sid = Sid::from(&k[..]);
+
+                let row = {
+                    let row_xenc = try!(v.into_list().ok_or(xenc::Error));
+                    let mut row = Vec::new();
+                    for v in row_xenc.into_iter() {
+                        row.push(try!(v
+                            .into_octets()
+                            .ok_or(xenc::Error)
+                            .and_then(|s|
+                                FromStr::from_str(unsafe {
+                                    from_utf8_unchecked(&s[..])
+                                }).map_err(|_| xenc::Error))
+                        ));
+                    }
+                    row
+                };
+
+                lc.insert(sid, row);
+            }
+            lc
+        };
+
+        let p = {
+            let p_xenc = try!(map
+                .remove(b"p" as &[u8])
+                .and_then(|p| p.into_list())
+                .ok_or(xenc::Error)
+            );
+            let mut p = Vec::new();
+            for v in p_xenc.into_iter() {
+                p.push(try!(v
+                    .into_octets()
+                    .map(|s| Sid::from(&s[..]))
+                    .ok_or(xenc::Error)
+                ))
+            }
+            p
+        };
+
+        Ok(LcGossip {
+            rows: lc,
+            cols: p
+        })
     }
 
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {

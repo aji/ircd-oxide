@@ -173,7 +173,7 @@ impl MsgData {
             to: to,
             fr: fr,
             id: id.map(|v| v as MsgId),
-            body: MsgDataBody::Missing,
+            body: try!(MsgDataBody::from_xenc(map)),
         })
     }
 
@@ -240,6 +240,25 @@ impl LcGossip {
 }
 
 impl MsgDataBody {
+    fn from_xenc(map: &mut HashMap<Vec<u8>, xenc::Value>)
+    -> xenc::Result<MsgDataBody> {
+        use self::MsgDataBody::*;
+
+        let m = if let Some(m) = map.remove(b"m" as &[u8]) {
+            try!(m.into_octets().ok_or(xenc::Error))
+        } else {
+            return Ok(Missing);
+        };
+
+        match &m[..] {
+            b"s" => Ok(MsgSync(try!(self::MsgSync::from_xenc(map)))),
+            b"f" => Ok(MsgFinal(try!(self::MsgFinal::from_xenc(map)))),
+            b"b" => Ok(MsgBrd(try!(self::MsgBrd::from_xenc(map)))),
+            b"1" => Ok(MsgOne(try!(self::MsgOne::from_xenc(map)))),
+            _ => Err(xenc::Error),
+        }
+    }
+
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
         use self::MsgDataBody::*;
 
@@ -254,6 +273,22 @@ impl MsgDataBody {
 }
 
 impl MsgSync {
+    fn from_xenc(map: &mut HashMap<Vec<u8>, xenc::Value>)
+    -> xenc::Result<MsgSync> {
+        Ok(MsgSync {
+            brd: try!(map
+                    .remove(b"b" as &[u8])
+                    .and_then(|v| v.into_i64())
+                    .map(|v| v as MsgId)
+                    .ok_or(xenc::Error)),
+            one: try!(map
+                    .remove(b"1" as &[u8])
+                    .and_then(|v| v.into_i64())
+                    .map(|v| v as MsgId)
+                    .ok_or(xenc::Error)),
+        })
+    }
+
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
         map.insert(b"m".to_vec(), From::from(b"s".to_vec()));
         map.insert(b"b".to_vec(), From::from(self.brd as i64));
@@ -262,6 +297,22 @@ impl MsgSync {
 }
 
 impl MsgFinal {
+    fn from_xenc(map: &mut HashMap<Vec<u8>, xenc::Value>)
+    -> xenc::Result<MsgFinal> {
+        Ok(MsgFinal {
+            brd: try!(map
+                    .remove(b"b" as &[u8])
+                    .and_then(|v| v.into_i64())
+                    .map(|v| v as MsgId)
+                    .ok_or(xenc::Error)),
+            one: try!(map
+                    .remove(b"1" as &[u8])
+                    .and_then(|v| v.into_i64())
+                    .map(|v| v as MsgId)
+                    .ok_or(xenc::Error)),
+        })
+    }
+
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
         map.insert(b"m".to_vec(), From::from(b"f".to_vec()));
         map.insert(b"b".to_vec(), From::from(self.brd as i64));
@@ -270,6 +321,21 @@ impl MsgFinal {
 }
 
 impl MsgBrd {
+    fn from_xenc(map: &mut HashMap<Vec<u8>, xenc::Value>)
+    -> xenc::Result<MsgBrd> {
+        Ok(MsgBrd {
+            seq: try!(map
+                    .remove(b"s" as &[u8])
+                    .and_then(|v| v.into_i64())
+                    .map(|v| v as MsgId)
+                    .ok_or(xenc::Error)),
+            data: try!(map
+                    .remove(b"d" as &[u8])
+                    .and_then(|v| v.into_octets())
+                    .ok_or(xenc::Error)),
+        })
+    }
+
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
         map.insert(b"m".to_vec(), From::from(b"b".to_vec()));
         map.insert(b"s".to_vec(), From::from(self.seq as i64));
@@ -278,6 +344,21 @@ impl MsgBrd {
 }
 
 impl MsgOne {
+    fn from_xenc(map: &mut HashMap<Vec<u8>, xenc::Value>)
+    -> xenc::Result<MsgOne> {
+        Ok(MsgOne {
+            seq: try!(map
+                    .remove(b"s" as &[u8])
+                    .and_then(|v| v.into_i64())
+                    .map(|v| v as MsgId)
+                    .ok_or(xenc::Error)),
+            data: try!(map
+                    .remove(b"d" as &[u8])
+                    .and_then(|v| v.into_octets())
+                    .ok_or(xenc::Error)),
+        })
+    }
+
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
         map.insert(b"m".to_vec(), From::from(b"o".to_vec()));
         map.insert(b"s".to_vec(), From::from(self.seq as i64));

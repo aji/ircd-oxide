@@ -123,13 +123,12 @@ fields:
 
  * `ka`: The keepalive ID to respond with (optional).
  * `kk`: The keepalive ID being responded to (optional).
+ * `t`: Specifies the type of parcel (see below).
 
-Up to one of the following is used as a key-value pair representing the body of
-the parcel:
+The `t` field can take on the following values. Each parcel type adds
+additional fields.
 
 ### `md`: Message data
-
-The value part of this body is a dictionary with the following keys:
 
  * `to`: The SID this parcel is intended for.
  * `fr`: The SID that generated this message.
@@ -141,8 +140,6 @@ omitted, no acknowledgement is requested.
 
 ### `ma`: Message acknowledge
 
-The value part of this body is a dictionary with the following keys:
-
  * `to`: The SID whose message is being acknowledged.
  * `fr`: The SID that is acknowledging successful delivery.
  * `id`: The ID of the message being acknowledged.
@@ -151,8 +148,6 @@ Forwarding is implied if `to` is not the SID of the receiving node.
 
 ### `lc`: Last contact gossip
 
-The value part of this body is a dictionary with the following keys:
-
  * `lc`: A dictionary of SID&rarr;row pairs.
  * `p`: The list of SIDs corresponding to columns.
 
@@ -160,6 +155,7 @@ As an example, consider the following parcel body.
 
 ```text
 {
+  t: "lc",
   lc: {
     AAA: [5, 3, 1, 9],
     BBB: [6, 7, 7, 8],
@@ -196,61 +192,42 @@ with packet data examples, a scenario where *A* sends a message to *B* via *P*
 __*A* sends *P* a parcel with `ka` 123 and `md` addressed to *B* from *A*.__
 
 ```text
-A to P: {
-  ka: 123,
-  md: { to: "B", fr: "A", id: 9999, d: ...data... }
-}
+A to P: { ka: 123, t: "md", to: "B", fr: "A", id: 9999, ...data... }
 ```
 
 __*P* receives the parcel and sends *A* a parcel with `kk` 123, and *B* a
 parcel with `ka` 456 and `md` addressed to *B* from *A*__
 
 ```text
-P to A: {
-  kk: 123
-}
+P to A: { kk: 123 }
 ```
 
 ```text
-P to B: {
-  ka: 456
-  md: { to: "B", fr: "A", id: 9999, d: ...data... }
-}
+P to B: { ka: 456, t: "md", to: "B", fr: "A", id: 9999, ...data... }
 ```
 
 __*B* receives the parcel and sends *P* a parcel with `kk` 456, `ka` 345, and
 `ma` addressed to *A* from *B*.__
 
 ```text
-B to P: {
-  kk: 456
-  ka: 345
-  ma: { to: "A", fr: "B", id: 999 }
-}
+B to P: { kk: 456, ka: 345, t: "ma", to: "A", fr: "B", id: 999 }
 ```
 
 __*P* receives the parcel and sends *A* a parcel with `ka` 789 and `ma`
 addressed to *A* from *B*, and sends *B* a parcel with `kk` 345.__
 
 ```text
-P to A: {
-  ka: 789
-  ma: { to: "A", fr: "B", id: 999 }
-}
+P to A: { ka: 789, t: "ma", to: "A", fr: "B", id: 999 }
 ```
 
 ```text
-P to B: {
-  kk: 345
-}
+P to B: { kk: 345 }
 ```
 
 __*A* receives the parcel and sends *P* a parcel wtih `kk` 789.__
 
 ```text
-A to P: {
-  kk: 789
-}
+A to P: { kk: 789 }
 ```
 
 __Conclusion.__ A total of 7 messages have been sent to establish last contact
@@ -266,6 +243,7 @@ carry further protocol meaning, and can be any of the following, keyed by `m`:
 
 ```text
 {
+  ...
   m: "s",
   b: 123,
   1: 345
@@ -288,6 +266,7 @@ should only deliver 36 and 37.
 
 ```text
 {
+  ...
   m: "f"
   b: 678,
   1: 789
@@ -307,9 +286,10 @@ completely.
 
 ```text
 {
+  ...
   m: "b",
   s: 123,
-  d: "...data..."
+  d: ...data...
 }
 ```
 
@@ -320,9 +300,10 @@ sequence number of this broadcast.
 
 ```text
 {
+  ...
   m: "1",
   s: 345,
-  d: "...data..."
+  d: ...data...
 }
 ```
 

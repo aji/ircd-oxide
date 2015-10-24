@@ -16,14 +16,14 @@ pub type KeepaliveId = u32;
 pub type MsgId = u32;
 pub type SeqNum = u32;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parcel {
     ka_rq: Option<KeepaliveId>,
     ka_ok: Option<KeepaliveId>,
     body: ParcelBody,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParcelBody {
     Missing,
     MsgData(MsgData),
@@ -31,7 +31,7 @@ pub enum ParcelBody {
     LcGossip(LcGossip),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgData {
     to: Sid,
     fr: Sid,
@@ -39,20 +39,20 @@ pub struct MsgData {
     body: MsgDataBody,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgAck {
     to: Sid,
     fr: Sid,
     id: MsgId,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LcGossip {
     rows: HashMap<Sid, Vec<Timespec>>,
     cols: Vec<Sid>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MsgDataBody {
     Missing,
     MsgSync(MsgSync),
@@ -61,25 +61,25 @@ pub enum MsgDataBody {
     MsgOne(MsgOne),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgSync {
     brd: SeqNum,
     one: SeqNum,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgFinal {
     brd: SeqNum,
     one: SeqNum,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgBrd {
     seq: SeqNum,
     data: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgOne {
     seq: SeqNum,
     data: Vec<u8>,
@@ -431,8 +431,157 @@ impl MsgOne {
     }
 
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
-        map.insert(b"m".to_vec(), From::from(b"o".to_vec()));
+        map.insert(b"m".to_vec(), From::from(b"1".to_vec()));
         map.insert(b"s".to_vec(), From::from(self.seq as i64));
         map.insert(b"d".to_vec(), From::from(self.data));
     }
+}
+
+#[cfg(test)]
+fn codec(p: Parcel) -> bool {
+    match Parcel::from_xenc(From::from(p.clone())) {
+        Ok(q) => p == q,
+        Err(_) => false,
+    }
+}
+
+#[test]
+fn test_codec() {
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::Missing
+    }));
+    assert!(codec(Parcel {
+        ka_rq: Some(10),
+        ka_ok: None,
+        body: ParcelBody::Missing
+    }));
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: Some(20),
+        body: ParcelBody::Missing
+    }));
+    assert!(codec(Parcel {
+        ka_rq: Some(20),
+        ka_ok: Some(20),
+        body: ParcelBody::Missing
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::MsgData(MsgData {
+            to: Sid::new("abc"),
+            fr: Sid::new("def"),
+            id: None,
+            body: MsgDataBody::Missing,
+        }),
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::MsgData(MsgData {
+            to: Sid::new("abc"),
+            fr: Sid::new("def"),
+            id: Some(30),
+            body: MsgDataBody::Missing,
+        }),
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::MsgData(MsgData {
+            to: Sid::new("abc"),
+            fr: Sid::new("def"),
+            id: Some(30),
+            body: MsgDataBody::MsgSync(MsgSync {
+                brd: 30,
+                one: 40,
+            }),
+        }),
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::MsgData(MsgData {
+            to: Sid::new("abc"),
+            fr: Sid::new("def"),
+            id: Some(30),
+            body: MsgDataBody::MsgFinal(MsgFinal {
+                brd: 30,
+                one: 40,
+            }),
+        }),
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::MsgData(MsgData {
+            to: Sid::new("abc"),
+            fr: Sid::new("def"),
+            id: Some(30),
+            body: MsgDataBody::MsgBrd(MsgBrd {
+                seq: 30,
+                data: b"hello".to_vec(),
+            }),
+        }),
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::MsgData(MsgData {
+            to: Sid::new("abc"),
+            fr: Sid::new("def"),
+            id: Some(30),
+            body: MsgDataBody::MsgOne(MsgOne {
+                seq: 40,
+                data: b"hello".to_vec(),
+            }),
+        }),
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::MsgAck(MsgAck {
+            to: Sid::new("abc"),
+            fr: Sid::new("def"),
+            id: 30,
+        }),
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::LcGossip(LcGossip {
+            rows: HashMap::new(),
+            cols: Vec::new(),
+        }),
+    }));
+
+    assert!(codec(Parcel {
+        ka_rq: None,
+        ka_ok: None,
+        body: ParcelBody::LcGossip(LcGossip {
+            rows: {
+                let mut rows = HashMap::new();
+                rows.insert(
+                    Sid::new("AAA"),
+                    vec![Timespec::new(3, 4), Timespec::new(5, 6)],
+                );
+                rows.insert(
+                    Sid::new("BBB"),
+                    vec![Timespec::new(1, 2), Timespec::new(7, 8)],
+                );
+                rows
+            },
+            cols: vec![Sid::new("CCC"), Sid::new("DDD")],
+        }),
+    }));
 }

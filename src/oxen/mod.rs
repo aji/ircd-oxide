@@ -22,6 +22,7 @@
 
 pub mod back;
 pub mod core;
+pub mod data;
 pub mod lc;
 
 pub use self::back::OxenBack;

@@ -6,8 +6,7 @@
 
 use std::collections::HashMap;
 use std::convert::From;
-use std::str::FromStr;
-use std::str::from_utf8_unchecked;
+use time::Timespec;
 
 use util::Sid;
 use xenc;
@@ -17,12 +16,14 @@ pub type KeepaliveId = u32;
 pub type MsgId = u32;
 pub type SeqNum = u32;
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Parcel {
     ka_rq: Option<KeepaliveId>,
     ka_ok: Option<KeepaliveId>,
     body: ParcelBody,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum ParcelBody {
     Missing,
     MsgData(MsgData),
@@ -45,8 +46,9 @@ pub struct MsgAck {
     id: MsgId,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct LcGossip {
-    rows: HashMap<Sid, Vec<f64>>,
+    rows: HashMap<Sid, Vec<Timespec>>,
     cols: Vec<Sid>,
 }
 
@@ -252,14 +254,7 @@ impl LcGossip {
                     let row_xenc = try!(v.into_list().ok_or(xenc::Error));
                     let mut row = Vec::new();
                     for v in row_xenc.into_iter() {
-                        row.push(try!(v
-                            .into_octets()
-                            .ok_or(xenc::Error)
-                            .and_then(|s|
-                                FromStr::from_str(unsafe {
-                                    from_utf8_unchecked(&s[..])
-                                }).map_err(|_| xenc::Error))
-                        ));
+                        row.push(try!(v.into_time().ok_or(xenc::Error)));
                     }
                     row
                 };
@@ -300,7 +295,7 @@ impl LcGossip {
                 .map(|(k, row)| (
                     From::from(k),
                     From::from(row.into_iter()
-                        .map(|v| From::from(format!("{}", v).into_bytes()))
+                        .map(|v| From::from(v))
                         .collect::<Vec<xenc::Value>>()
                     )
                 ))

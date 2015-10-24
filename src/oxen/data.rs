@@ -287,7 +287,24 @@ impl LcGossip {
 
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
         map.insert(b"pt".to_vec(), From::from(b"lc".to_vec()));
-        // TODO
+
+        map.insert(b"lc".to_vec(), xenc::Value::Dict(
+            self.rows.into_iter()
+                .map(|(k, row)| (
+                    From::from(k),
+                    From::from(row.into_iter()
+                        .map(|v| From::from(format!("{}", v).into_bytes()))
+                        .collect::<Vec<xenc::Value>>()
+                    )
+                ))
+                .collect()
+        ));
+
+        map.insert(b"p".to_vec(), xenc::Value::List(
+            self.cols.into_iter()
+                .map(|sid| From::from(sid))
+                .collect()
+        ));
     }
 }
 

@@ -58,7 +58,7 @@ impl fmt::Display for Sid {
 
 impl From<Sid> for xenc::Value {
     fn from(sid: Sid) -> xenc::Value {
-        xenc::Value::Octets(vec![sid.0[0], sid.0[1], sid.0[2]])
+        xenc::Value::Octets(From::from(sid))
     }
 }
 

@@ -115,7 +115,6 @@ impl Oxen {
 
     fn check_last_contact<B>(&mut self, back: &mut B)
     where B: OxenBack {
-        info!("checking expiring last contact...");
         self.lc_timer = back.timer_set(Duration::milliseconds(1000));
 
         // Peer status:

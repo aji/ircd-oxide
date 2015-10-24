@@ -123,7 +123,7 @@ fields:
 
  * `ka`: The keepalive ID to respond with (optional).
  * `kk`: The keepalive ID being responded to (optional).
- * `t`: Specifies the type of parcel (see below).
+ * `pt`: Specifies the type of parcel (see below).
 
 The `t` field can take on the following values. Each parcel type adds
 additional fields.
@@ -155,7 +155,7 @@ As an example, consider the following parcel body.
 
 ```text
 {
-  t: "lc",
+  pt: "lc",
   lc: {
     AAA: [5, 3, 1, 9],
     BBB: [6, 7, 7, 8],
@@ -192,7 +192,7 @@ with packet data examples, a scenario where *A* sends a message to *B* via *P*
 __*A* sends *P* a parcel with `ka` 123 and `md` addressed to *B* from *A*.__
 
 ```text
-A to P: { ka: 123, t: "md", to: "B", fr: "A", id: 9999, ...data... }
+A to P: { ka: 123, pt: "md", to: "B", fr: "A", id: 9999, ...data... }
 ```
 
 __*P* receives the parcel and sends *A* a parcel with `kk` 123, and *B* a
@@ -203,21 +203,21 @@ P to A: { kk: 123 }
 ```
 
 ```text
-P to B: { ka: 456, t: "md", to: "B", fr: "A", id: 9999, ...data... }
+P to B: { ka: 456, pt: "md", to: "B", fr: "A", id: 9999, ...data... }
 ```
 
 __*B* receives the parcel and sends *P* a parcel with `kk` 456, `ka` 345, and
 `ma` addressed to *A* from *B*.__
 
 ```text
-B to P: { kk: 456, ka: 345, t: "ma", to: "A", fr: "B", id: 999 }
+B to P: { kk: 456, ka: 345, pt: "ma", to: "A", fr: "B", id: 999 }
 ```
 
 __*P* receives the parcel and sends *A* a parcel with `ka` 789 and `ma`
 addressed to *A* from *B*, and sends *B* a parcel with `kk` 345.__
 
 ```text
-P to A: { ka: 789, t: "ma", to: "A", fr: "B", id: 999 }
+P to A: { ka: 789, pt: "ma", to: "A", fr: "B", id: 999 }
 ```
 
 ```text

@@ -122,13 +122,13 @@ impl ParcelBody {
     -> xenc::Result<ParcelBody> {
         use self::ParcelBody::*;
 
-        let t = if let Some(t) = map.remove(b"t" as &[u8]) {
+        let pt = if let Some(t) = map.remove(b"pt" as &[u8]) {
             try!(t.into_octets().ok_or(xenc::Error))
         } else {
             return Ok(Missing);
         };
 
-        match &t[..] {
+        match &pt[..] {
             b"md" => Ok(MsgData(try!(self::MsgData::from_xenc(map)))),
             b"ma" => Ok(MsgAck(try!(self::MsgAck::from_xenc(map)))),
             b"lc" => Ok(LcGossip(try!(self::LcGossip::from_xenc(map)))),
@@ -178,7 +178,7 @@ impl MsgData {
     }
 
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
-        map.insert(b"t".to_vec(),  From::from(b"md".to_vec()));
+        map.insert(b"pt".to_vec(), From::from(b"md".to_vec()));
         map.insert(b"to".to_vec(), From::from(self.to));
         map.insert(b"fr".to_vec(), From::from(self.fr));
 
@@ -219,7 +219,7 @@ impl MsgAck {
     }
 
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
-        map.insert(b"t".to_vec(),  From::from(b"ma".to_vec()));
+        map.insert(b"pt".to_vec(), From::from(b"ma".to_vec()));
         map.insert(b"to".to_vec(), From::from(self.to));
         map.insert(b"fr".to_vec(), From::from(self.fr));
         map.insert(b"id".to_vec(), From::from(self.id as i64));
@@ -234,7 +234,7 @@ impl LcGossip {
     }
 
     fn into_xenc(self, map: &mut HashMap<Vec<u8>, xenc::Value>) {
-        map.insert(b"t".to_vec(),  From::from(b"lc".to_vec()));
+        map.insert(b"pt".to_vec(), From::from(b"lc".to_vec()));
         // TODO
     }
 }

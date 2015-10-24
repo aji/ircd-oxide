@@ -30,6 +30,7 @@ pub enum ParcelBody {
     LcGossip(LcGossip),
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MsgData {
     to: Sid,
     fr: Sid,
@@ -37,6 +38,7 @@ pub struct MsgData {
     body: MsgDataBody,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MsgAck {
     to: Sid,
     fr: Sid,
@@ -48,6 +50,7 @@ pub struct LcGossip {
     cols: Vec<Sid>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum MsgDataBody {
     Missing,
     MsgSync(MsgSync),
@@ -56,21 +59,25 @@ pub enum MsgDataBody {
     MsgOne(MsgOne),
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MsgSync {
     brd: SeqNum,
     one: SeqNum,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MsgFinal {
     brd: SeqNum,
     one: SeqNum,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MsgBrd {
     seq: SeqNum,
     data: Vec<u8>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MsgOne {
     seq: SeqNum,
     data: Vec<u8>,

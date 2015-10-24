@@ -9,6 +9,7 @@ use std::convert::From;
 use std::io;
 use std::io::prelude::*;
 use std::result;
+use time::Timespec;
 
 /// A simple error type
 #[derive(Debug, PartialEq, Eq)]
@@ -24,6 +25,7 @@ pub type Result<T> = result::Result<T, Error>;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Value {
     I64(i64),
+    Time(Timespec),
     Octets(Vec<u8>),
     List(Vec<Value>),
     Dict(HashMap<Vec<u8>, Value>),
@@ -36,20 +38,26 @@ impl Value {
         match self { Value::I64(v) => Some(v), _ => None }
     }
 
-    /// The contained value as a slice of octets, if `self` is an `Octets`,
+    /// The contained value as a `Timespec`, if `self` is a `Time`, otherwise
+    /// `None`
+    pub fn into_time(self) -> Option<Timespec> {
+        match self { Value::Time(t) => Some(t), _ => None }
+    }
+
+    /// The contained value as a vector of octets, if `self` is an `Octets`,
     /// otherwise `None`.
     pub fn into_octets(self) -> Option<Vec<u8>> {
         match self { Value::Octets(v) => Some(v), _ => None }
     }
 
-    /// The contained value as a slice of `Value`, if `self` is a `List`,
+    /// The contained value as a vector of `Value`, if `self` is a `List`,
     /// otherwise `None`.
     pub fn into_list(self) -> Option<Vec<Value>> {
         match self { Value::List(v) => Some(v), _ => None }
     }
 
-    /// A reference to the contained value, if `self` is a `Dict`, otherwise
-    /// `None`.
+    /// The contained value as a map of `Vec<u8>` to `Value, if `self` is a
+    /// `Dict`, otherwise `None`.
     pub fn into_dict(self) -> Option<HashMap<Vec<u8>, Value>> {
         match self { Value::Dict(v) => Some(v), _ => None }
     }
@@ -58,6 +66,8 @@ impl Value {
     pub fn write<W: Write>(&self, w: &mut W) -> io::Result<()> {
         match *self {
             Value::I64(v) => write!(w, "i{}e", v),
+
+            Value::Time(t) => write!(w, "t{}.{}e", t.sec, t.nsec),
 
             Value::Octets(ref v) => {
                 try!(write!(w, "{}:", v.len()));
@@ -93,6 +103,12 @@ impl From<i64> for Value {
     }
 }
 
+impl From<Timespec> for Value {
+    fn from(v: Timespec) -> Value {
+        Value::Time(v)
+    }
+}
+
 impl From<Vec<u8>> for Value {
     fn from(v: Vec<u8>) -> Value {
         Value::Octets(v)
@@ -119,6 +135,12 @@ pub trait FromXenc: Sized {
 impl FromXenc for i64 {
     fn from_xenc(v: Value) -> Result<i64> {
         v.into_i64().ok_or(Error)
+    }
+}
+
+impl FromXenc for Timespec {
+    fn from_xenc(v: Value) -> Result<Timespec> {
+        v.into_time().ok_or(Error)
     }
 }
 
@@ -198,6 +220,13 @@ impl<'a> Parser<'a> {
             b'i' => {
                 self.getch();
                 Ok(Value::I64(try!(self.read_i64(b'e'))))
+            },
+
+            b't' => {
+                self.getch();
+                let sec = try!(self.read_i64(b'.'));
+                let nsec = try!(self.read_i64(b'e')) as i32;
+                Ok(Value::Time(Timespec::new(sec, nsec)))
             },
 
             b'0'...b'9' => {
@@ -283,6 +312,14 @@ fn test_integers() {
     assert_eq!(Ok(Value::I64(-6)),   decode("i-6e"));
     assert_eq!(Ok(Value::I64(-37)),  decode("i-37e"));
     assert_eq!(Err(Error),           decode("i?e"));
+}
+
+#[test]
+fn test_times() {
+    assert_eq!(
+        Ok(Value::Time(Timespec { sec: 5, nsec: 10 })),
+        decode("t5.10e")
+    );
 }
 
 #[test]
@@ -375,6 +412,7 @@ fn test_simple_dict() {
 #[test]
 fn test_codecs() {
     assert!(codec("i6e"));                    // 6
+    assert!(codec("t5.10e"));                 // json has no native time
     assert!(codec("3:abc"));                  // "abc"
     assert!(codec("le"));                     // []
     assert!(codec("li6e3:abce"));             // [6,"abc"]

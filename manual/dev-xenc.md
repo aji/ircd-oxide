@@ -6,6 +6,7 @@ XENC is an octet-based serialization format used in a handful of places around
 XENC supports the following types of data:
 
   * Integers
+  * Timestamps
   * Octet strings
   * Lists, whose values may be any XENC value
   * Dictionaries, which map byte array keys to XENC values

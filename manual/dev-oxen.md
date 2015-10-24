@@ -134,7 +134,7 @@ The value part of this body is a dictionary with the following keys:
  * `to`: The SID this parcel is intended for.
  * `fr`: The SID that generated this message.
  * `id`: The unique ID of this message (optional).
- * `d`: Message data
+ * Additional message data fields (see below).
 
 Forwarding is implied if `to` is not the SID of the receiving node. If `id` is
 omitted, no acknowledgement is requested.
@@ -259,8 +259,8 @@ message with acknowledgement totaling 4 hops.
 
 ## Message data (`md`) body types.
 
-The body of a message data (`md`) parcel carries further protocol meaning, and
-can take on any of the following:
+A message data (`md`) parcel can take multiple forms. Its additional fields
+carry further protocol meaning, and can be any of the following, keyed by `m`:
 
 ### Synchronize message
 

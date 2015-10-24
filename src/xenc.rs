@@ -5,6 +5,7 @@
 // the COPYING file in the project root.
 
 use std::collections::HashMap;
+use std::convert::From;
 use std::io;
 use std::io::prelude::*;
 use std::result;
@@ -31,26 +32,26 @@ pub enum Value {
 impl Value {
     /// The contained value as an `i16`, if `self` is an `I64`, otherwise
     /// `None`
-    pub fn as_i64(&self) -> Option<i64> {
-        match *self { Value::I64(v) => Some(v), _ => None }
+    pub fn into_i64(self) -> Option<i64> {
+        match self { Value::I64(v) => Some(v), _ => None }
     }
 
     /// The contained value as a slice of octets, if `self` is an `Octets`,
     /// otherwise `None`.
-    pub fn as_octets(&self) -> Option<&[u8]> {
-        match *self { Value::Octets(ref v) => Some(&v[..]), _ => None }
+    pub fn into_octets(self) -> Option<Vec<u8>> {
+        match self { Value::Octets(v) => Some(v), _ => None }
     }
 
     /// The contained value as a slice of `Value`, if `self` is a `List`,
     /// otherwise `None`.
-    pub fn as_list(&self) -> Option<&[Value]> {
-        match *self { Value::List(ref v) => Some(&v[..]), _ => None }
+    pub fn into_list(self) -> Option<Vec<Value>> {
+        match self { Value::List(v) => Some(v), _ => None }
     }
 
     /// A reference to the contained value, if `self` is a `Dict`, otherwise
     /// `None`.
-    pub fn as_dict(&self) -> Option<&HashMap<Vec<u8>, Value>> {
-        match *self { Value::Dict(ref v) => Some(&v), _ => None }
+    pub fn into_dict(self) -> Option<HashMap<Vec<u8>, Value>> {
+        match self { Value::Dict(v) => Some(v), _ => None }
     }
 
     /// Serializes `self` to the given `Write`able, otherwise `None`.
@@ -86,9 +87,57 @@ impl Value {
     }
 }
 
+impl From<i64> for Value {
+    fn from(v: i64) -> Value {
+        Value::I64(v)
+    }
+}
+
+impl From<Vec<u8>> for Value {
+    fn from(v: Vec<u8>) -> Value {
+        Value::Octets(v)
+    }
+}
+
+impl<T> From<Vec<T>> for Value where Value: From<T> {
+    fn from(v: Vec<T>) -> Value {
+        Value::List(v.into_iter().map(|w| From::from(w)).collect())
+    }
+}
+
+impl<T> From<HashMap<Vec<u8>, T>> for Value where Value: From<T> {
+    fn from(v: HashMap<Vec<u8>, T>) -> Value {
+        Value::Dict(v.into_iter().map(|(k, v)| (k, From::from(v))).collect())
+    }
+}
+
 /// A trait for things that can be deserialized from XENC values
 pub trait FromXenc: Sized {
-    fn from_xenc(x: Value) -> Result<Self>;
+    fn from_xenc(v: Value) -> Result<Self>;
+}
+
+impl FromXenc for i64 {
+    fn from_xenc(v: Value) -> Result<i64> {
+        v.into_i64().ok_or(Error)
+    }
+}
+
+impl FromXenc for Vec<u8> {
+    fn from_xenc(v: Value) -> Result<Vec<u8>> {
+        v.into_octets().ok_or(Error)
+    }
+}
+
+impl FromXenc for Vec<Value> {
+    fn from_xenc(v: Value) -> Result<Vec<Value>> {
+        v.into_list().ok_or(Error)
+    }
+}
+
+impl FromXenc for HashMap<Vec<u8>, Value> {
+    fn from_xenc(v: Value) -> Result<HashMap<Vec<u8>, Value>> {
+        v.into_dict().ok_or(Error)
+    }
 }
 
 /// A parser

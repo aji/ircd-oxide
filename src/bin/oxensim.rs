@@ -354,7 +354,7 @@ fn run<'cfg>(
                     me: p.to
                 };
                 if let Some(n) = nodes.get_mut(&p.to) {
-                    n.incoming(&mut back, Some(p.from), p.data);
+                    n.incoming(&mut back, p.from, p.data);
                 }
                 p.deliver
             },

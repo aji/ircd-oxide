@@ -15,6 +15,7 @@ use std::convert::From;
 use time::Duration;
 
 use oxen::OxenBack;
+use oxen::data::*;
 use oxen::lc::LastContact;
 use util::Sid;
 use xenc;
@@ -23,7 +24,6 @@ use xenc::FromXenc;
 pub type Timer = u64;
 
 pub struct Oxen {
-    me: Sid,
     peers: HashSet<Sid>,
 
     lc: LastContact,
@@ -44,7 +44,6 @@ impl Oxen {
     pub fn new<B>(back: &mut B) -> Oxen
     where B: OxenBack {
         let mut oxen = Oxen {
-            me: back.me(),
             peers: HashSet::new(),
 
             lc: LastContact::new(back.me()),
@@ -75,14 +74,34 @@ impl Oxen {
         self.peer_status.remove(&sid);
     }
 
-    pub fn incoming<B>(&mut self, back: &mut B, from: Option<Sid>, data: Vec<u8>)
+    pub fn incoming<B>(&mut self, back: &mut B, from: Sid, data: Vec<u8>)
     where B: OxenBack {
-        if let Some(from) = from {
-            info!("data from {}", from);
+        let p = match xenc::Parser::new(&data[..]).next() {
+            Ok(p_xenc) => match Parcel::from_xenc(p_xenc) {
+                Ok(p) => p,
+                Err(_) => {
+                    error!("could not decode a Parcel from incoming XENC");
+                    return;
+                },
+            },
+            Err(_) => {
+                warn!("could not decode XENC from incoming data");
+                return;
+            },
+        };
+
+        if let Some(ka) = p.ka_rq {
+            debug!("responding to {} keepalive {}", from, ka);
+            back.queue_send_xenc(from, Parcel {
+                ka_rq: None,
+                ka_ok: Some(ka),
+                body: ParcelBody::Missing,
+            });
+        }
+
+        if let Some(kk) = p.ka_ok {
+            debug!("received keepalive {} ok from {}", kk, from);
             self.lc.put(back.me(), from, back.get_time());
-            if data[..] == b"ping"[..] {
-                back.queue_send(from, b"pong".to_vec());
-            }
         }
     }
 
@@ -148,7 +167,11 @@ impl Oxen {
                     PeerStatus::Available => {
                         info!("{} became stale; pinging", p);
                         *status = PeerStatus::Expiring;
-                        back.queue_send(*p, b"ping".to_vec());
+                        back.queue_send_xenc(*p, Parcel {
+                            ka_rq: Some(0),
+                            ka_ok: None,
+                            body: ParcelBody::Missing,
+                        })
                     },
                     PeerStatus::Expiring => {
                         if age.num_seconds() > 10 {

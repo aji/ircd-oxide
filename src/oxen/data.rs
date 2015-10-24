@@ -4,6 +4,8 @@
 // This file is part of ircd-oxide and is protected under the terms contained in
 // the COPYING file in the project root.
 
+//! Types for handling Oxen parcels
+
 use std::collections::HashMap;
 use std::convert::From;
 use time::Timespec;
@@ -12,17 +14,24 @@ use util::Sid;
 use xenc;
 use xenc::FromXenc;
 
+/// The type for keepalive tokens
 pub type KeepaliveId = u32;
+
+/// The type for message tokens
 pub type MsgId = u32;
+
+/// The type for sequence numbers
 pub type SeqNum = u32;
 
+/// Parcels are the basic unit of communication between nodes in an Oxen cluster
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parcel {
-    ka_rq: Option<KeepaliveId>,
-    ka_ok: Option<KeepaliveId>,
-    body: ParcelBody,
+    pub ka_rq: Option<KeepaliveId>,
+    pub ka_ok: Option<KeepaliveId>,
+    pub body: ParcelBody,
 }
 
+/// The body of a `Parcel` can take a handful of forms, captured in this `enum`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParcelBody {
     Missing,
@@ -31,27 +40,31 @@ pub enum ParcelBody {
     LcGossip(LcGossip),
 }
 
+/// A message data (`md`) parcel. Further contains a `MsgDataBody`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgData {
-    to: Sid,
-    fr: Sid,
-    id: Option<MsgId>,
-    body: MsgDataBody,
+    pub to: Sid,
+    pub fr: Sid,
+    pub id: Option<MsgId>,
+    pub body: MsgDataBody,
 }
 
+/// A message acknowledgement (`ma`) parcel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgAck {
-    to: Sid,
-    fr: Sid,
-    id: MsgId,
+    pub to: Sid,
+    pub fr: Sid,
+    pub id: MsgId,
 }
 
+/// A last contact gossip (`lc`) parcel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LcGossip {
-    rows: HashMap<Sid, Vec<Timespec>>,
-    cols: Vec<Sid>,
+    pub rows: HashMap<Sid, Vec<Timespec>>,
+    pub cols: Vec<Sid>,
 }
 
+/// The body of a `MsgData` parcel body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MsgDataBody {
     Missing,
@@ -61,28 +74,32 @@ pub enum MsgDataBody {
     MsgOne(MsgOne),
 }
 
+/// Message data for synchronization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgSync {
-    brd: SeqNum,
-    one: SeqNum,
+    pub brd: SeqNum,
+    pub one: SeqNum,
 }
 
+/// Message data for finalization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgFinal {
-    brd: SeqNum,
-    one: SeqNum,
+    pub brd: SeqNum,
+    pub one: SeqNum,
 }
 
+/// Message data for broadcast messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgBrd {
-    seq: SeqNum,
-    data: Vec<u8>,
+    pub seq: SeqNum,
+    pub data: Vec<u8>,
 }
 
+/// Message data for one-to-one messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgOne {
-    seq: SeqNum,
-    data: Vec<u8>,
+    pub seq: SeqNum,
+    pub data: Vec<u8>,
 }
 
 impl FromXenc for Parcel {

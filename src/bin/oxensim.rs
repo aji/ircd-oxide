@@ -10,6 +10,7 @@ use rand::{thread_rng, Rng};
 use rand::distributions::{Normal, IndependentSample};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp;
+use std::str::from_utf8_unchecked;
 use std::sync::{Arc, Mutex};
 use time::{Duration, Timespec, get_time};
 
@@ -409,7 +410,7 @@ mod logger {
 
     pub fn init(prefix: Arc<Mutex<String>>) -> Result<(), log::SetLoggerError> {
         log::set_logger(|max_log_level| {
-            max_log_level.set(log::LogLevelFilter::Info);
+            max_log_level.set(log::LogLevelFilter::Debug);
             Box::new(SimpleLogger(prefix))
         })
     }
@@ -430,8 +431,8 @@ fn main() {
 
     let mut cfg = NetConfig::complete(
         &[n1, n2, n3, n4, n5],
-        0.01, // 1% packet loss between all hosts
-        0.06, 0.01, // ~60ish ms latency between hosts
+        0.02, // 2% packet loss between all hosts
+        0.15, 0.01, // ~150ish ms latency between hosts
     );
 
     let mut net = NetSim::new(&cfg, pfx);
@@ -446,5 +447,5 @@ fn main() {
     nodes.insert(n4, oxen(&mut net, n4, now, &delay));
     nodes.insert(n5, oxen(&mut net, n5, now, &delay));
 
-    let now = run(net, nodes, now, Duration::hours(24));
+    let now = run(net, nodes, now, Duration::hours(1));
 }

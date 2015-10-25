@@ -85,12 +85,12 @@ impl Oxen {
     where B: OxenBack {
         self.peers.insert(sid);
         self.peer_status.insert(sid, PeerStatus::Unchecked);
-    }
 
-    pub fn forget_peer<B>(&mut self, back: &mut B, sid: Sid)
-    where B: OxenBack {
-        self.peers.remove(&sid);
-        self.peer_status.remove(&sid);
+        info!("synchronizing with {}", sid);
+        self.send_with_redelivery(back, &sid, MsgDataBody::MsgSync(MsgSync {
+            brd: 0,
+            one: 0,
+        }));
     }
 
     pub fn incoming<B>(&mut self, back: &mut B, from: Sid, data: Vec<u8>)
@@ -134,9 +134,9 @@ impl Oxen {
 
         match p.body {
             ParcelBody::Missing => { },
-            ParcelBody::MsgData(data) => self.handle_msg_data(back, from, data),
-            ParcelBody::MsgAck(data) => self.handle_msg_ack(back, from, data),
-            ParcelBody::LcGossip(data) => self.handle_lc_gossip(back, from, data),
+            ParcelBody::MsgData(data) => self.handle_msg_data(back, data),
+            ParcelBody::MsgAck(data) => self.handle_msg_ack(back, data),
+            ParcelBody::LcGossip(data) => self.handle_lc_gossip(back, data),
         }
     }
 
@@ -198,7 +198,7 @@ impl Oxen {
 
     fn send_with_redelivery<B>(&mut self, back: &mut B, to: &Sid, m: MsgDataBody)
     where B: OxenBack {
-        let ival = Duration::milliseconds(300);
+        let ival = Duration::milliseconds(800);
 
         let id = random();
 
@@ -297,18 +297,53 @@ impl Oxen {
         }
     }
 
-    fn handle_msg_data<B>(&mut self, back: &mut B, from: Sid, data: MsgData)
+    fn handle_msg_data<B>(&mut self, back: &mut B, data: MsgData)
     where B: OxenBack {
+        if data.to != back.me() {
+            back.queue_send_xenc(data.to, Parcel {
+                ka_rq: None,
+                ka_ok: None,
+                body: ParcelBody::MsgData(data),
+            });
+            return;
+        }
+
+        if let Some(id) = data.id {
+            let parcel = Parcel {
+                ka_rq: None,
+                ka_ok: None,
+                body: ParcelBody::MsgAck(MsgAck {
+                    to: data.fr,
+                    fr: back.me(),
+                    id: id,
+                })
+            };
+            back.queue_send_xenc(data.to, parcel);
+        }
+
+        if let MsgDataBody::MsgSync(syn) = data.body {
+            info!("got synchronization from {}", data.fr);
+        }
     }
 
-    fn handle_msg_ack<B>(&mut self, back: &mut B, from: Sid, data: MsgAck)
+    fn handle_msg_ack<B>(&mut self, back: &mut B, data: MsgAck)
     where B: OxenBack {
-        if let Some(pending) = self.pending_msgs.remove(&(from, data.id)) {
+        if data.to != back.me() {
+            back.queue_send_xenc(data.to, Parcel {
+                ka_rq: None,
+                ka_ok: None,
+                body: ParcelBody::MsgAck(data),
+            });
+            return;
+        }
+
+        if let Some(pending) = self.pending_msgs.remove(&(data.fr, data.id)) {
+            back.timer_cancel(pending.redeliver);
             self.pending_msg_timers.remove(&pending.redeliver);
         }
     }
 
-    fn handle_lc_gossip<B>(&mut self, back: &mut B, from: Sid, data: LcGossip)
+    fn handle_lc_gossip<B>(&mut self, back: &mut B, data: LcGossip)
     where B: OxenBack {
     }
 }

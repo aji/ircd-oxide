@@ -277,7 +277,7 @@ struct BackSim<'r, 'ns: 'r> {
 }
 
 impl<'r, 'ns> OxenHandler for BackSim<'r, 'ns> {
-    fn get_time(&self) -> Timespec { self.now }
+    fn now(&self) -> Timespec { self.now }
 
     fn me(&self) -> Sid { self.me }
 

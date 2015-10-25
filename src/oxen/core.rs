@@ -42,7 +42,7 @@ pub enum OxenEvent {
 }
 
 pub trait OxenHandler {
-    fn get_time(&self) -> Timespec;
+    fn now(&self) -> Timespec;
 
     fn me(&self) -> Sid;
 
@@ -257,7 +257,7 @@ impl Oxen {
     where H: OxenHandler, xenc::Value: From<X> {
         let thresh = Duration::seconds(20);
 
-        let route = match self.lc.route(to, hdlr.get_time(), thresh) {
+        let route = match self.lc.route(to, hdlr.now(), thresh) {
             Some(r) => r,
             None => return false,
         };
@@ -277,14 +277,14 @@ impl Oxen {
             }
 
             let lc = self.lc.get(&hdlr.me(), p);
-            let age = (hdlr.get_time() - lc).num_seconds();
+            let age = (hdlr.now() - lc).num_seconds();
 
             if age >= 2 {
                 debug!("sending keepalive to {}", p);
                 let ka = random();
                 self.pending_ka.insert(*p, PendingKeepalive {
                     id: ka,
-                    at: hdlr.get_time(),
+                    at: hdlr.now(),
                 });
                 hdlr.queue_send_xenc(*p, Parcel {
                     ka_rq: Some(ka),

@@ -58,7 +58,12 @@ impl LastContact {
     pub fn put(&mut self, from: Sid, to: Sid, time: Timespec) {
         self.peers.insert(from);
         self.peers.insert(to);
-        self.tab.put(from, to, time);
+
+        let entry = self.tab.entry(from, to).or_insert(NEG_INFTY);
+
+        if *entry < time {
+            *entry = time;
+        }
     }
 
     /// Determines if the indicated link is possibly usable, given some current

@@ -29,8 +29,9 @@ pub struct Oxen {
     peer_status: HashMap<Sid, PeerStatus>,
 
     pending_ka: HashMap<Sid, PendingKeepalive>,
+    pending_msgs: HashMap<(Sid, MsgId), PendingMessage>,
+    pending_msg_timers: HashMap<Timer, (Sid, MsgId)>,
 
-    unack_timer: Timer,
     lc_timer: Timer,
 }
 
@@ -47,6 +48,15 @@ struct PendingKeepalive {
     at: Timespec,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct PendingMessage {
+    to: Sid,
+    id: MsgId,
+    redeliver: Timer,
+    interval: Duration,
+    msg: MsgData,
+}
+
 impl Oxen {
     pub fn new<B>(back: &mut B) -> Oxen
     where B: OxenBack {
@@ -57,15 +67,15 @@ impl Oxen {
             peer_status: HashMap::new(),
 
             pending_ka: HashMap::new(),
+            pending_msgs: HashMap::new(),
+            pending_msg_timers: HashMap::new(),
 
-            unack_timer: 0,
             lc_timer: 0,
         };
 
         oxen.peers.insert(back.me());
 
         // start these timers
-        oxen.check_unacked_packets(back);
         oxen.check_last_contact(back);
 
         oxen
@@ -121,24 +131,101 @@ impl Oxen {
                 _ => info!("stray keepalive {} from {}", kk, from),
             }
         }
+
+        match p.body {
+            ParcelBody::Missing => { },
+            ParcelBody::MsgData(data) => self.handle_msg_data(back, from, data),
+            ParcelBody::MsgAck(data) => self.handle_msg_ack(back, from, data),
+            ParcelBody::LcGossip(data) => self.handle_lc_gossip(back, from, data),
+        }
     }
 
     pub fn timeout<B>(&mut self, back: &mut B, timer: Timer)
     where B: OxenBack {
-        match timer {
-            t if t == self.unack_timer     => self.check_unacked_packets(back),
-            t if t == self.lc_timer        => self.check_last_contact(back),
-
-            _ => warn!("unknown timer has fired!"),
+        if timer == self.lc_timer {
+            self.check_last_contact(back);
+            return;
         }
+
+        match self.pending_msg_timers.remove(&timer) {
+            Some(k) => match self.pending_msgs.remove(&k) {
+                Some(pending) => self.redeliver(back, pending),
+                _ => error!("inconsistency in pending message tables!"),
+            },
+            _ => error!("unknown timer has fired!"),
+        };
     }
 
     pub fn send_broadcast<B>(&mut self, back: &mut B, data: Vec<u8>)
     where B: OxenBack {
+        let peers: Vec<Sid> = self.peers.iter().cloned().collect();
+
+        for p in peers {
+            self.send_with_redelivery(back, &p, MsgDataBody::MsgBrd(MsgBrd {
+                seq: 0,
+                data: data.clone(),
+            }));
+        }
     }
 
     pub fn send_one<B>(&mut self, back: &mut B, to: Sid, data: Vec<u8>)
     where B: OxenBack {
+        self.send_with_redelivery(back, &to, MsgDataBody::MsgOne(MsgOne {
+            seq: 0,
+            data: data,
+        }));
+    }
+
+    fn redeliver<B>(&mut self, back: &mut B, mut pending: PendingMessage)
+    where B: OxenBack {
+        let key = (pending.to, pending.id);
+
+        // TODO: fail after a number of retries
+        // TODO: retry in longer intervals
+
+        pending.redeliver = back.timer_set(pending.interval);
+
+        // TODO: check this return value
+        self.routed(back, &pending.to, Parcel {
+            ka_rq: None,
+            ka_ok: None,
+            body: ParcelBody::MsgData(pending.msg.clone()),
+        });
+
+        self.pending_msg_timers.insert(pending.redeliver, key);
+        self.pending_msgs.insert(key, pending);
+    }
+
+    fn send_with_redelivery<B>(&mut self, back: &mut B, to: &Sid, m: MsgDataBody)
+    where B: OxenBack {
+        let ival = Duration::milliseconds(300);
+
+        let id = random();
+
+        let msg = MsgData {
+            to: *to,
+            fr: back.me(),
+            id: Some(id),
+            body: m,
+        };
+
+        let pending = PendingMessage {
+            to: *to,
+            id: id,
+            redeliver: back.timer_set(ival),
+            interval: ival,
+            msg: msg.clone(),
+        };
+
+        // TODO: check this return value
+        self.routed(back, to, Parcel {
+            ka_rq: None,
+            ka_ok: None,
+            body: ParcelBody::MsgData(msg),
+        });
+
+        self.pending_msg_timers.insert(pending.redeliver, (*to, id));
+        self.pending_msgs.insert((*to, id), pending);
     }
 
     fn routed<B, X>(&mut self, back: &mut B, to: &Sid, data: X) -> bool
@@ -153,11 +240,6 @@ impl Oxen {
         back.queue_send_xenc(route, data);
 
         true
-    }
-
-    fn check_unacked_packets<B>(&mut self, back: &mut B)
-    where B: OxenBack {
-        self.unack_timer = back.timer_set(Duration::milliseconds(200));
     }
 
     fn check_last_contact<B>(&mut self, back: &mut B)
@@ -213,5 +295,20 @@ impl Oxen {
                 },
             }
         }
+    }
+
+    fn handle_msg_data<B>(&mut self, back: &mut B, from: Sid, data: MsgData)
+    where B: OxenBack {
+    }
+
+    fn handle_msg_ack<B>(&mut self, back: &mut B, from: Sid, data: MsgAck)
+    where B: OxenBack {
+        if let Some(pending) = self.pending_msgs.remove(&(from, data.id)) {
+            self.pending_msg_timers.remove(&pending.redeliver);
+        }
+    }
+
+    fn handle_lc_gossip<B>(&mut self, back: &mut B, from: Sid, data: LcGossip)
+    where B: OxenBack {
     }
 }

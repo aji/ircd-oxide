@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use time::{Duration, Timespec, get_time};
 
 use ircd::util::{Sid, Table};
-use ircd::oxen::{Oxen, OxenBack, Timer};
+use ircd::oxen::{Oxen, OxenHandler, Timer};
 
 struct PendingPacket {
     deliver: Timespec,
@@ -280,7 +280,7 @@ struct BackSim<'r, 'ns: 'r> {
     me: Sid,
 }
 
-impl<'r, 'ns> OxenBack for BackSim<'r, 'ns> {
+impl<'r, 'ns> OxenHandler for BackSim<'r, 'ns> {
     fn get_time(&self) -> Timespec { self.now }
 
     fn me(&self) -> Sid { self.me }

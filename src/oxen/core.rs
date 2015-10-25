@@ -11,9 +11,9 @@
 use rand::random;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::convert::From;
 use time::{Duration, Timespec};
 
-use oxen::OxenBack;
 use oxen::data::*;
 use oxen::lc::LastContact;
 use util::Sid;
@@ -33,6 +33,31 @@ pub struct Oxen {
     pending_msg_timers: HashMap<Timer, (Sid, MsgId)>,
 
     lc_timer: Timer,
+}
+
+pub enum OxenEvent {
+    Message(Sid, Vec<u8>),
+    PeerVisible(Sid),
+    PeerVanished(Sid),
+}
+
+pub trait OxenHandler {
+    fn get_time(&self) -> Timespec;
+
+    fn me(&self) -> Sid;
+
+    fn queue_send(&mut self, peer: Sid, data: Vec<u8>);
+
+    fn timer_set(&mut self, at: Duration) -> Timer;
+
+    fn timer_cancel(&mut self, timer: Timer);
+
+    fn queue_send_xenc<X>(&mut self, peer: Sid, data: X)
+    where xenc::Value: From<X> {
+        let mut vec = Vec::new();
+        let _ = xenc::Value::from(data).write(&mut vec);
+        self.queue_send(peer, vec);
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -58,12 +83,12 @@ struct PendingMessage {
 }
 
 impl Oxen {
-    pub fn new<B>(back: &mut B) -> Oxen
-    where B: OxenBack {
+    pub fn new<H>(hdlr: &mut H) -> Oxen
+    where H: OxenHandler {
         let mut oxen = Oxen {
             peers: HashSet::new(),
 
-            lc: LastContact::new(back.me()),
+            lc: LastContact::new(hdlr.me()),
             peer_status: HashMap::new(),
 
             pending_ka: HashMap::new(),
@@ -73,28 +98,28 @@ impl Oxen {
             lc_timer: 0,
         };
 
-        oxen.peers.insert(back.me());
+        oxen.peers.insert(hdlr.me());
 
         // start these timers
-        oxen.check_last_contact(back);
+        oxen.check_last_contact(hdlr);
 
         oxen
     }
 
-    pub fn add_peer<B>(&mut self, back: &mut B, sid: Sid)
-    where B: OxenBack {
+    pub fn add_peer<H>(&mut self, hdlr: &mut H, sid: Sid)
+    where H: OxenHandler {
         self.peers.insert(sid);
         self.peer_status.insert(sid, PeerStatus::Unchecked);
 
         info!("synchronizing with {}", sid);
-        self.send_with_redelivery(back, &sid, MsgDataBody::MsgSync(MsgSync {
+        self.send_with_redelivery(hdlr, &sid, MsgDataBody::MsgSync(MsgSync {
             brd: 0,
             one: 0,
         }));
     }
 
-    pub fn incoming<B>(&mut self, back: &mut B, from: Sid, data: Vec<u8>)
-    where B: OxenBack {
+    pub fn incoming<H>(&mut self, hdlr: &mut H, from: Sid, data: Vec<u8>)
+    where H: OxenHandler {
         let p = match xenc::Parser::new(&data[..]).next() {
             Ok(p_xenc) => match Parcel::from_xenc(p_xenc) {
                 Ok(p) => p,
@@ -111,7 +136,7 @@ impl Oxen {
 
         if let Some(ka) = p.ka_rq {
             debug!("responding to {} keepalive {}", from, ka);
-            back.queue_send_xenc(from, Parcel {
+            hdlr.queue_send_xenc(from, Parcel {
                 ka_rq: None,
                 ka_ok: Some(ka),
                 body: ParcelBody::Missing,
@@ -123,7 +148,7 @@ impl Oxen {
 
             match self.pending_ka.remove(&from) {
                 Some(pka) if pka.id == kk => {
-                    self.lc.put(back.me(), from, pka.at);
+                    self.lc.put(hdlr.me(), from, pka.at);
                 },
                 Some(pka) => { // pka.id != kk
                     self.pending_ka.insert(from, pka);
@@ -134,59 +159,59 @@ impl Oxen {
 
         match p.body {
             ParcelBody::Missing => { },
-            ParcelBody::MsgData(data) => self.handle_msg_data(back, data),
-            ParcelBody::MsgAck(data) => self.handle_msg_ack(back, data),
-            ParcelBody::LcGossip(data) => self.handle_lc_gossip(back, data),
+            ParcelBody::MsgData(data) => self.handle_msg_data(hdlr, data),
+            ParcelBody::MsgAck(data) => self.handle_msg_ack(hdlr, data),
+            ParcelBody::LcGossip(data) => self.handle_lc_gossip(hdlr, data),
         }
     }
 
-    pub fn timeout<B>(&mut self, back: &mut B, timer: Timer)
-    where B: OxenBack {
+    pub fn timeout<H>(&mut self, hdlr: &mut H, timer: Timer)
+    where H: OxenHandler {
         if timer == self.lc_timer {
-            self.check_last_contact(back);
+            self.check_last_contact(hdlr);
             return;
         }
 
         match self.pending_msg_timers.remove(&timer) {
             Some(k) => match self.pending_msgs.remove(&k) {
-                Some(pending) => self.redeliver(back, pending),
+                Some(pending) => self.redeliver(hdlr, pending),
                 _ => error!("inconsistency in pending message tables!"),
             },
             _ => error!("unknown timer has fired!"),
         };
     }
 
-    pub fn send_broadcast<B>(&mut self, back: &mut B, data: Vec<u8>)
-    where B: OxenBack {
+    pub fn send_broadcast<H>(&mut self, hdlr: &mut H, data: Vec<u8>)
+    where H: OxenHandler {
         let peers: Vec<Sid> = self.peers.iter().cloned().collect();
 
         for p in peers {
-            self.send_with_redelivery(back, &p, MsgDataBody::MsgBrd(MsgBrd {
+            self.send_with_redelivery(hdlr, &p, MsgDataBody::MsgBrd(MsgBrd {
                 seq: 0,
                 data: data.clone(),
             }));
         }
     }
 
-    pub fn send_one<B>(&mut self, back: &mut B, to: Sid, data: Vec<u8>)
-    where B: OxenBack {
-        self.send_with_redelivery(back, &to, MsgDataBody::MsgOne(MsgOne {
+    pub fn send_one<H>(&mut self, hdlr: &mut H, to: Sid, data: Vec<u8>)
+    where H: OxenHandler {
+        self.send_with_redelivery(hdlr, &to, MsgDataBody::MsgOne(MsgOne {
             seq: 0,
             data: data,
         }));
     }
 
-    fn redeliver<B>(&mut self, back: &mut B, mut pending: PendingMessage)
-    where B: OxenBack {
+    fn redeliver<H>(&mut self, hdlr: &mut H, mut pending: PendingMessage)
+    where H: OxenHandler {
         let key = (pending.to, pending.id);
 
         // TODO: fail after a number of retries
         // TODO: retry in longer intervals
 
-        pending.redeliver = back.timer_set(pending.interval);
+        pending.redeliver = hdlr.timer_set(pending.interval);
 
         // TODO: check this return value
-        self.routed(back, &pending.to, Parcel {
+        self.routed(hdlr, &pending.to, Parcel {
             ka_rq: None,
             ka_ok: None,
             body: ParcelBody::MsgData(pending.msg.clone()),
@@ -196,15 +221,15 @@ impl Oxen {
         self.pending_msgs.insert(key, pending);
     }
 
-    fn send_with_redelivery<B>(&mut self, back: &mut B, to: &Sid, m: MsgDataBody)
-    where B: OxenBack {
+    fn send_with_redelivery<H>(&mut self, hdlr: &mut H, to: &Sid, m: MsgDataBody)
+    where H: OxenHandler {
         let ival = Duration::milliseconds(800);
 
         let id = random();
 
         let msg = MsgData {
             to: *to,
-            fr: back.me(),
+            fr: hdlr.me(),
             id: Some(id),
             body: m,
         };
@@ -212,13 +237,13 @@ impl Oxen {
         let pending = PendingMessage {
             to: *to,
             id: id,
-            redeliver: back.timer_set(ival),
+            redeliver: hdlr.timer_set(ival),
             interval: ival,
             msg: msg.clone(),
         };
 
         // TODO: check this return value
-        self.routed(back, to, Parcel {
+        self.routed(hdlr, to, Parcel {
             ka_rq: None,
             ka_ok: None,
             body: ParcelBody::MsgData(msg),
@@ -228,40 +253,40 @@ impl Oxen {
         self.pending_msgs.insert((*to, id), pending);
     }
 
-    fn routed<B, X>(&mut self, back: &mut B, to: &Sid, data: X) -> bool
-    where B: OxenBack, xenc::Value: From<X> {
+    fn routed<H, X>(&mut self, hdlr: &mut H, to: &Sid, data: X) -> bool
+    where H: OxenHandler, xenc::Value: From<X> {
         let thresh = Duration::seconds(20);
 
-        let route = match self.lc.route(to, back.get_time(), thresh) {
+        let route = match self.lc.route(to, hdlr.get_time(), thresh) {
             Some(r) => r,
             None => return false,
         };
 
-        back.queue_send_xenc(route, data);
+        hdlr.queue_send_xenc(route, data);
 
         true
     }
 
-    fn check_last_contact<B>(&mut self, back: &mut B)
-    where B: OxenBack {
-        self.lc_timer = back.timer_set(Duration::milliseconds(1000));
+    fn check_last_contact<H>(&mut self, hdlr: &mut H)
+    where H: OxenHandler {
+        self.lc_timer = hdlr.timer_set(Duration::milliseconds(1000));
 
         for p in self.peers.iter() {
-            if back.me() == *p {
+            if hdlr.me() == *p {
                 continue;
             }
 
-            let lc = self.lc.get(&back.me(), p);
-            let age = (back.get_time() - lc).num_seconds();
+            let lc = self.lc.get(&hdlr.me(), p);
+            let age = (hdlr.get_time() - lc).num_seconds();
 
             if age >= 2 {
                 debug!("sending keepalive to {}", p);
                 let ka = random();
                 self.pending_ka.insert(*p, PendingKeepalive {
                     id: ka,
-                    at: back.get_time(),
+                    at: hdlr.get_time(),
                 });
-                back.queue_send_xenc(*p, Parcel {
+                hdlr.queue_send_xenc(*p, Parcel {
                     ka_rq: Some(ka),
                     ka_ok: None,
                     body: ParcelBody::Missing,
@@ -297,10 +322,10 @@ impl Oxen {
         }
     }
 
-    fn handle_msg_data<B>(&mut self, back: &mut B, data: MsgData)
-    where B: OxenBack {
-        if data.to != back.me() {
-            back.queue_send_xenc(data.to, Parcel {
+    fn handle_msg_data<H>(&mut self, hdlr: &mut H, data: MsgData)
+    where H: OxenHandler {
+        if data.to != hdlr.me() {
+            hdlr.queue_send_xenc(data.to, Parcel {
                 ka_rq: None,
                 ka_ok: None,
                 body: ParcelBody::MsgData(data),
@@ -314,11 +339,11 @@ impl Oxen {
                 ka_ok: None,
                 body: ParcelBody::MsgAck(MsgAck {
                     to: data.fr,
-                    fr: back.me(),
+                    fr: hdlr.me(),
                     id: id,
                 })
             };
-            back.queue_send_xenc(data.to, parcel);
+            hdlr.queue_send_xenc(data.to, parcel);
         }
 
         if let MsgDataBody::MsgSync(syn) = data.body {
@@ -326,10 +351,10 @@ impl Oxen {
         }
     }
 
-    fn handle_msg_ack<B>(&mut self, back: &mut B, data: MsgAck)
-    where B: OxenBack {
-        if data.to != back.me() {
-            back.queue_send_xenc(data.to, Parcel {
+    fn handle_msg_ack<H>(&mut self, hdlr: &mut H, data: MsgAck)
+    where H: OxenHandler {
+        if data.to != hdlr.me() {
+            hdlr.queue_send_xenc(data.to, Parcel {
                 ka_rq: None,
                 ka_ok: None,
                 body: ParcelBody::MsgAck(data),
@@ -338,12 +363,12 @@ impl Oxen {
         }
 
         if let Some(pending) = self.pending_msgs.remove(&(data.fr, data.id)) {
-            back.timer_cancel(pending.redeliver);
+            hdlr.timer_cancel(pending.redeliver);
             self.pending_msg_timers.remove(&pending.redeliver);
         }
     }
 
-    fn handle_lc_gossip<B>(&mut self, back: &mut B, data: LcGossip)
-    where B: OxenBack {
+    fn handle_lc_gossip<H>(&mut self, hdlr: &mut H, data: LcGossip)
+    where H: OxenHandler {
     }
 }

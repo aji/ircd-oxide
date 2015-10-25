@@ -20,11 +20,10 @@
 //! See the section of the manual on Oxen for more details on how the protocol
 //! works and what it guarantees.
 
-pub mod back;
 pub mod core;
 pub mod data;
 pub mod lc;
 
-pub use self::back::OxenBack;
 pub use self::core::Oxen;
+pub use self::core::OxenHandler;
 pub use self::core::Timer;

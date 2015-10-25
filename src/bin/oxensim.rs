@@ -107,10 +107,10 @@ impl NetConfig {
         self.latency.put(from, to, Normal::new(mean, dev));
     }
 
-    fn partition(&mut self, sids: &[Sid]) {
+    fn partition(&mut self, sids: &[Sid], loss: f64) {
         let qs: HashSet<Sid> = sids.iter().cloned().collect();
 
-        let loss = &mut self.packet_loss;
+        let loss_map = &mut self.packet_loss;
 
         for p in self.peers.iter() {
             // skip peers in the given half of the partition
@@ -118,10 +118,10 @@ impl NetConfig {
                 continue;
             }
 
-            // otherwise, set loss to 100% in both directions
+            // otherwise, set loss to given amount in both directions
             for q in qs.iter() {
-                loss.put(*p, *q, 1.0);
-                loss.put(*q, *p, 1.0);
+                loss_map.put(*p, *q, loss);
+                loss_map.put(*q, *p, loss);
             }
         }
     }
@@ -165,11 +165,11 @@ struct NetSim<'cfg> {
     events: BinaryHeap<Event>,
     canceled_timers: HashSet<Timer>,
 
-    config: &'cfg NetConfig,
+    config: &'cfg mut NetConfig,
 }
 
 impl<'cfg> NetSim<'cfg> {
-    fn new(config: &'cfg NetConfig, pfx: Arc<Mutex<String>>) -> NetSim<'cfg> {
+    fn new(config: &'cfg mut NetConfig, pfx: Arc<Mutex<String>>) -> NetSim<'cfg> {
         NetSim {
             log_prefix: pfx,
 
@@ -317,34 +317,39 @@ fn oxen<'a, 'cfg, S: IndependentSample<f64>>(
     })
 }
 
-fn run<'cfg>(
-    mut sim: NetSim<'cfg>,
-    mut nodes: HashMap<Sid, Oxen>,
+fn setup<'a, 'cfg>(
+    sim: &'a mut NetSim<'cfg>,
+    nodes: &'a mut HashMap<Sid, Oxen>,
+    now: Timespec,
+) {
+    let delay = Normal::new(0.0, 1000.0);
+    let peers: Vec<Sid> = nodes.keys().cloned().collect();
+
+    for p in peers.iter() {
+        for (k, q) in nodes.iter_mut() {
+            let del = delay.ind_sample(&mut thread_rng()).abs();
+            let now = now + Duration::milliseconds(del as i64);
+
+            sim.with_prefix(now, *k, |sim| {
+                let mut back = BackSim {
+                    sim: sim,
+                    now: now,
+                    me: *k,
+                };
+
+                q.add_peer(&mut back, *p);
+            });
+        }
+    }
+}
+
+fn run<'a, 'cfg>(
+    sim: &'a mut NetSim<'cfg>,
+    nodes: &'a mut HashMap<Sid, Oxen>,
     mut now: Timespec,
     dur: Duration
 ) -> Timespec {
     let end = now + dur;
-    let peers: Vec<Sid> = nodes.keys().cloned().collect();
-
-    {
-        let delay = Normal::new(0.0, 1000.0);
-        for p in peers.iter() {
-            for (k, q) in nodes.iter_mut() {
-                let del = delay.ind_sample(&mut thread_rng()).abs();
-                let now = now + Duration::milliseconds(del as i64);
-
-                sim.with_prefix(now, *k, |sim| {
-                    let mut back = BackSim {
-                        sim: sim,
-                        now: now,
-                        me: *k,
-                    };
-
-                    q.add_peer(&mut back, *p);
-                });
-            }
-        }
-    }
 
     loop {
         let evt = match sim.next_event() {
@@ -427,7 +432,7 @@ fn main() {
         0.15, 0.01, // ~150ish ms latency between hosts
     );
 
-    let mut net = NetSim::new(&cfg, pfx);
+    let mut net = NetSim::new(&mut cfg, pfx);
     let mut nodes = HashMap::new();
     let now = time::get_time();
 
@@ -440,5 +445,10 @@ fn main() {
     nodes.insert(n5, oxen(&mut net, n5, now, &delay));
 
     info!("oxensim starting!");
-    let now = run(net, nodes, now, Duration::hours(24));
+    setup(&mut net, &mut nodes, now);
+    let now = run(&mut net, &mut nodes, now, Duration::hours(1));
+    net.config.partition(&[n1, n2], 1.00);
+    let now = run(&mut net, &mut nodes, now, Duration::hours(1));
+    net.config.partition(&[n1, n2], 0.02);
+    let now = run(&mut net, &mut nodes, now, Duration::hours(1));
 }

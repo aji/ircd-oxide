@@ -23,63 +23,45 @@ use time::{Duration, Timespec, get_time};
 use ircd::util::{Sid, Table};
 use ircd::oxen::{Oxen, OxenHandler, Timer};
 
-struct PendingPacket {
-    deliver: Timespec,
-    from: Sid,
+struct Event {
     to: Sid,
-    data: Vec<u8>,
+    at: Timespec,
+    ty: EventType
 }
 
-impl PartialOrd for PendingPacket {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.deliver.partial_cmp(&other.deliver).map(|o| o.reverse())
-    }
-}
-
-impl Ord for PendingPacket {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.deliver.cmp(&other.deliver).reverse()
-    }
-}
-
-impl PartialEq for PendingPacket {
-    fn eq(&self, other: &Self) -> bool {
-        self.deliver == other.deliver
-    }
-}
-
-impl Eq for PendingPacket { }
-
-struct PendingTimer {
-    fire: Timespec,
-    on: Sid,
-    token: Timer,
-}
-
-impl PartialOrd for PendingTimer {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.fire.partial_cmp(&other.fire).map(|o| o.reverse())
-    }
-}
-
-impl Ord for PendingTimer {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.fire.cmp(&other.fire).reverse()
-    }
-}
-
-impl PartialEq for PendingTimer {
-    fn eq(&self, other: &Self) -> bool {
-        self.fire == other.fire
-    }
-}
-
-impl Eq for PendingTimer { }
-
-enum Event {
+enum EventType {
     Packet(PendingPacket),
     Timer(PendingTimer),
 }
+
+struct PendingPacket {
+    from: Sid,
+    data: Vec<u8>,
+}
+
+struct PendingTimer {
+    token: Timer,
+}
+
+impl PartialOrd for Event {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.at.partial_cmp(&other.at).map(|o| o.reverse())
+    }
+}
+
+impl Ord for Event {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.at.cmp(&other.at).reverse()
+    }
+}
+
+impl PartialEq for Event {
+    fn eq(&self, other: &Self) -> bool {
+        self.at == other.at
+    }
+}
+
+impl Eq for Event { }
 
 struct NetConfig {
     peers: HashSet<Sid>,
@@ -179,8 +161,7 @@ impl NetConfig {
 struct NetSim<'cfg> {
     log_prefix: Arc<Mutex<String>>,
 
-    packets: BinaryHeap<PendingPacket>,
-    timers: BinaryHeap<PendingTimer>,
+    events: BinaryHeap<Event>,
     canceled_timers: HashSet<Timer>,
 
     config: &'cfg NetConfig,
@@ -191,12 +172,44 @@ impl<'cfg> NetSim<'cfg> {
         NetSim {
             log_prefix: pfx,
 
-            packets: BinaryHeap::new(),
-            timers: BinaryHeap::new(),
+            events: BinaryHeap::new(),
             canceled_timers: HashSet::new(),
 
             config: config,
         }
+    }
+
+    fn prefix_set(&mut self, now: Timespec, peer: Sid) {
+        self.log_prefix.lock()
+            .map(|mut s| {
+                *s = format!(
+                    "{}.{:03} {}: ",
+                    now.sec,
+                    now.nsec / 1000000,
+                    peer
+                );
+            })
+            .unwrap();
+    }
+
+    fn prefix_clear(&mut self, now: Timespec) {
+        self.log_prefix.lock()
+            .map(|mut s| {
+                *s = format!(
+                    "{}.{:03}: ",
+                    now.sec,
+                    now.nsec / 1000000,
+                );
+            })
+            .unwrap();
+    }
+
+    fn with_prefix<F, T>(&mut self, now: Timespec, peer: Sid, mut f: F) -> T
+    where F: FnOnce(&mut NetSim<'cfg>) -> T {
+        self.prefix_set(now, peer);
+        let x = f(self);
+        self.prefix_clear(now);
+        x
     }
 
     fn queue_send(
@@ -215,61 +228,44 @@ impl<'cfg> NetSim<'cfg> {
         };
 
         // now package it all up and add it to the queue
-        self.packets.push(PendingPacket {
-            deliver: now + latency,
-            from: from,
+        self.events.push(Event {
             to: to,
-            data: data
-        })
+            at: now + latency,
+            ty: EventType::Packet(PendingPacket {
+                from: from,
+                data: data
+            }),
+        });
     }
 
     fn queue_timer(&mut self, fire: Timespec, on: Sid, tok: Timer) {
-        self.timers.push(PendingTimer {
-            fire: fire,
-            on: on,
-            token: tok
-        })
+        self.events.push(Event {
+            to: on,
+            at: fire,
+            ty: EventType::Timer(PendingTimer {
+                token: tok
+            }),
+        });
     }
 
     fn cancel_timer(&mut self, tok: Timer) {
         self.canceled_timers.insert(tok);
     }
 
-    fn clear_canceled_timers(&mut self) {
-        loop {
-            if let Some(tok) = self.timers.peek().map(|t| t.token) {
-                if self.canceled_timers.contains(&tok) {
-                    self.canceled_timers.remove(&tok);
-                    self.timers.pop();
-                } else {
-                    return;
-                }
-            } else {
-                return;
-            }
-        }
-    }
-
     fn next_event(&mut self) -> Option<Event> {
-        self.clear_canceled_timers();
+        loop {
+            let next_event = match self.events.pop() {
+                Some(ev) => ev,
+                None => return None,
+            };
 
-        let take_timer = {
-            let next_packet_time = self.packets.peek().map(|p| p.deliver);
-            let next_timer_time = self.timers.peek().map(|t| t.fire);
-
-            match next_packet_time {
-                Some(pt) => match next_timer_time {
-                    Some(tt) => tt < pt,
-                    None => false,
-                },
-                None => true
+            if let EventType::Timer(ref timer) = next_event.ty {
+                if self.canceled_timers.remove(&timer.token) {
+                    continue;
+                }
             }
-        };
 
-        if take_timer {
-            self.timers.pop().map(|t| Event::Timer(t))
-        } else {
-            self.packets.pop().map(|p| Event::Packet(p))
+            return Some(next_event);
         }
     }
 }
@@ -308,13 +304,15 @@ fn oxen<'a, 'cfg, S: IndependentSample<f64>>(
 ) -> Oxen {
     let del = delay.ind_sample(&mut thread_rng()).abs();
 
-    let mut back = BackSim {
-        sim: sim,
-        now: now + Duration::milliseconds(del as i64),
-        me: peer,
-    };
+    sim.with_prefix(now, peer, |sim| {
+        let mut back = BackSim {
+            sim: sim,
+            now: now + Duration::milliseconds(del as i64),
+            me: peer,
+        };
 
-    Oxen::new(&mut back)
+        Oxen::new(&mut back)
+    })
 }
 
 fn run<'cfg>(
@@ -331,12 +329,17 @@ fn run<'cfg>(
         for p in peers.iter() {
             for (k, q) in nodes.iter_mut() {
                 let del = delay.ind_sample(&mut thread_rng()).abs();
-                let mut back = BackSim {
-                    sim: &mut sim,
-                    now: now + Duration::milliseconds(del as i64),
-                    me: *k,
-                };
-                q.add_peer(&mut back, *p);
+                let now = now + Duration::milliseconds(del as i64);
+
+                sim.with_prefix(now, *k, |sim| {
+                    let mut back = BackSim {
+                        sim: sim,
+                        now: now,
+                        me: *k,
+                    };
+
+                    q.add_peer(&mut back, *p);
+                });
             }
         }
     }
@@ -350,39 +353,22 @@ fn run<'cfg>(
             },
         };
 
-        now = match evt {
-            Event::Packet(p) => {
-                { sim.log_prefix.lock().map(|mut s| *s =
-                        format!("{}.{:03} {}: ", p.deliver.sec,
-                            p.deliver.nsec / 1000000, p.to)); }
-                let mut back = BackSim {
-                    sim: &mut sim,
-                    now: p.deliver,
-                    me: p.to
-                };
-                if let Some(n) = nodes.get_mut(&p.to) {
-                    n.incoming(&mut back, p.from, p.data);
-                }
-                p.deliver
-            },
+        now = evt.at;
 
-            Event::Timer(t) => {
-                { sim.log_prefix.lock().map(|mut s| *s =
-                        format!("{}.{:03} {}: ", t.fire.sec,
-                            t.fire.nsec / 1000000, t.on)); }
+        if let Some(n) = nodes.get_mut(&evt.to) {
+            sim.with_prefix(evt.at, evt.to, move |sim| {
                 let mut back = BackSim {
-                    sim: &mut sim,
-                    now: t.fire,
-                    me: t.on
+                    sim: sim,
+                    now: now,
+                    me: evt.to,
                 };
-                if let Some(n) = nodes.get_mut(&t.on) {
-                    n.timeout(&mut back, t.token);
-                }
-                t.fire
-            },
-        };
 
-        { sim.log_prefix.lock().map(|mut s| *s = format!("")); }
+                match evt.ty {
+                    EventType::Packet(p) => n.incoming(&mut back, p.from, p.data),
+                    EventType::Timer(t) => n.timeout(&mut back, t.token),
+                }
+            });
+        }
 
         if now > end {
             info!("all done!");
@@ -427,8 +413,6 @@ fn main() {
 
     logger::init(pfx.clone()).ok().expect("failed to initialize logger");
 
-    info!("oxensim starting!");
-
     let n1 = Sid::new("A__");
     let n2 = Sid::new("_B_");
     let n3 = Sid::new("__C");
@@ -453,5 +437,6 @@ fn main() {
     nodes.insert(n4, oxen(&mut net, n4, now, &delay));
     nodes.insert(n5, oxen(&mut net, n5, now, &delay));
 
+    info!("oxensim starting!");
     let now = run(net, nodes, now, Duration::hours(1));
 }

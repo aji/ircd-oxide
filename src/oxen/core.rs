@@ -141,6 +141,20 @@ impl Oxen {
     where B: OxenBack {
     }
 
+    fn routed<B, X>(&mut self, back: &mut B, to: &Sid, data: X) -> bool
+    where B: OxenBack, xenc::Value: From<X> {
+        let thresh = Duration::seconds(20);
+
+        let route = match self.lc.route(to, back.get_time(), thresh) {
+            Some(r) => r,
+            None => return false,
+        };
+
+        back.queue_send_xenc(route, data);
+
+        true
+    }
+
     fn check_unacked_packets<B>(&mut self, back: &mut B)
     where B: OxenBack {
         self.unack_timer = back.timer_set(Duration::milliseconds(200));

@@ -22,6 +22,7 @@ use time::{Duration, Timespec, get_time};
 
 use ircd::util::{Sid, Table};
 use ircd::oxen::{Oxen, OxenHandler, Timer};
+use ircd::xenc;
 
 struct Event {
     to: Sid,
@@ -36,7 +37,7 @@ enum EventType {
 
 struct PendingPacket {
     from: Sid,
-    data: Vec<u8>,
+    data: xenc::Value,
 }
 
 struct PendingTimer {
@@ -214,7 +215,7 @@ impl<'cfg> NetSim<'cfg> {
 
     fn queue_send(
         &mut self, now: Timespec,
-        from: Sid, to: Sid, data: Vec<u8>
+        from: Sid, to: Sid, data: xenc::Value
     ) {
         // first, decide if we're going to drop the packet
         if self.config.will_drop_packet(&from, &to) {
@@ -281,8 +282,9 @@ impl<'r, 'ns> OxenHandler for BackSim<'r, 'ns> {
 
     fn me(&self) -> Sid { self.me }
 
-    fn queue_send(&mut self, peer: Sid, data: Vec<u8>) {
-        self.sim.queue_send(self.now, self.me, peer, data);
+    fn queue_send<X>(&mut self, peer: Sid, data: X)
+    where xenc::Value: From<X> {
+        self.sim.queue_send(self.now, self.me, peer, From::from(data));
     }
 
     fn timer_set(&mut self, at: Duration) -> Timer {
@@ -438,5 +440,5 @@ fn main() {
     nodes.insert(n5, oxen(&mut net, n5, now, &delay));
 
     info!("oxensim starting!");
-    let now = run(net, nodes, now, Duration::hours(1));
+    let now = run(net, nodes, now, Duration::hours(24));
 }

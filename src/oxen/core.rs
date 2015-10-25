@@ -46,18 +46,12 @@ pub trait OxenHandler {
 
     fn me(&self) -> Sid;
 
-    fn queue_send(&mut self, peer: Sid, data: Vec<u8>);
+    fn queue_send<X>(&mut self, peer: Sid, data: X)
+    where xenc::Value: From<X>;
 
     fn timer_set(&mut self, at: Duration) -> Timer;
 
     fn timer_cancel(&mut self, timer: Timer);
-
-    fn queue_send_xenc<X>(&mut self, peer: Sid, data: X)
-    where xenc::Value: From<X> {
-        let mut vec = Vec::new();
-        let _ = xenc::Value::from(data).write(&mut vec);
-        self.queue_send(peer, vec);
-    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -118,25 +112,19 @@ impl Oxen {
         }));
     }
 
-    pub fn incoming<H>(&mut self, hdlr: &mut H, from: Sid, data: Vec<u8>)
+    pub fn incoming<H>(&mut self, hdlr: &mut H, from: Sid, data: xenc::Value)
     where H: OxenHandler {
-        let p = match xenc::Parser::new(&data[..]).next() {
-            Ok(p_xenc) => match Parcel::from_xenc(p_xenc) {
-                Ok(p) => p,
-                Err(_) => {
-                    error!("could not decode a Parcel from incoming XENC");
-                    return;
-                },
-            },
+        let p = match Parcel::from_xenc(data) {
+            Ok(p) => p,
             Err(_) => {
-                warn!("could not decode XENC from incoming data");
+                error!("could not decode a Parcel from incoming XENC");
                 return;
             },
         };
 
         if let Some(ka) = p.ka_rq {
             debug!("responding to {} keepalive {}", from, ka);
-            hdlr.queue_send_xenc(from, Parcel {
+            hdlr.queue_send(from, Parcel {
                 ka_rq: None,
                 ka_ok: Some(ka),
                 body: ParcelBody::Missing,
@@ -262,7 +250,7 @@ impl Oxen {
             None => return false,
         };
 
-        hdlr.queue_send_xenc(route, data);
+        hdlr.queue_send(route, data);
 
         true
     }
@@ -286,7 +274,7 @@ impl Oxen {
                     id: ka,
                     at: hdlr.now(),
                 });
-                hdlr.queue_send_xenc(*p, Parcel {
+                hdlr.queue_send(*p, Parcel {
                     ka_rq: Some(ka),
                     ka_ok: None,
                     body: ParcelBody::Missing,
@@ -325,7 +313,7 @@ impl Oxen {
     fn handle_msg_data<H>(&mut self, hdlr: &mut H, data: MsgData)
     where H: OxenHandler {
         if data.to != hdlr.me() {
-            hdlr.queue_send_xenc(data.to, Parcel {
+            hdlr.queue_send(data.to, Parcel {
                 ka_rq: None,
                 ka_ok: None,
                 body: ParcelBody::MsgData(data),
@@ -343,7 +331,7 @@ impl Oxen {
                     id: id,
                 })
             };
-            hdlr.queue_send_xenc(data.to, parcel);
+            hdlr.queue_send(data.to, parcel);
         }
 
         if let MsgDataBody::MsgSync(syn) = data.body {
@@ -354,7 +342,7 @@ impl Oxen {
     fn handle_msg_ack<H>(&mut self, hdlr: &mut H, data: MsgAck)
     where H: OxenHandler {
         if data.to != hdlr.me() {
-            hdlr.queue_send_xenc(data.to, Parcel {
+            hdlr.queue_send(data.to, Parcel {
                 ka_rq: None,
                 ka_ok: None,
                 body: ParcelBody::MsgAck(data),

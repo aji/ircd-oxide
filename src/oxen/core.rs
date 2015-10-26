@@ -32,6 +32,7 @@ pub struct Oxen {
     pending_msgs: HashMap<(Sid, MsgId), PendingMessage>,
     pending_msg_timers: HashMap<Timer, (Sid, MsgId)>,
 
+    gossip_timer: Timer,
     lc_timer: Timer,
 }
 
@@ -89,12 +90,14 @@ impl Oxen {
             pending_msgs: HashMap::new(),
             pending_msg_timers: HashMap::new(),
 
+            gossip_timer: 0,
             lc_timer: 0,
         };
 
         oxen.peers.insert(hdlr.me());
 
         // start these timers
+        oxen.last_contact_gossip(hdlr);
         oxen.check_last_contact(hdlr);
 
         oxen
@@ -157,6 +160,11 @@ impl Oxen {
     where H: OxenHandler {
         if timer == self.lc_timer {
             self.check_last_contact(hdlr);
+            return;
+        }
+
+        if timer == self.gossip_timer {
+            self.last_contact_gossip(hdlr);
             return;
         }
 
@@ -253,6 +261,21 @@ impl Oxen {
         hdlr.queue_send(route, data);
 
         true
+    }
+
+    fn last_contact_gossip<H>(&mut self, hdlr: &mut H)
+    where H: OxenHandler {
+        self.gossip_timer = hdlr.timer_set(Duration::milliseconds(1000));
+
+        let gossip = self.make_gossip();
+
+        for p in self.peers.iter() {
+            hdlr.queue_send(*p, Parcel {
+                ka_rq: None,
+                ka_ok: None,
+                body: ParcelBody::LcGossip(gossip.clone()),
+            });
+        }
     }
 
     fn check_last_contact<H>(&mut self, hdlr: &mut H)
@@ -362,6 +385,23 @@ impl Oxen {
             for (to, at) in data.cols.iter().zip(times.into_iter()) {
                 self.lc.put(from, *to, at);
             }
+        }
+    }
+
+    fn make_gossip(&self) -> LcGossip {
+        let peers: Vec<Sid> = self.peers.iter().cloned()
+            .filter(|_| random())
+            .collect();
+
+        let mut rows = HashMap::new();
+
+        for p in peers.iter() {
+            rows.insert(*p, self.peers.iter().map(|q| self.lc.get(p, q)).collect());
+        }
+
+        LcGossip {
+            rows: rows,
+            cols: peers,
         }
     }
 }

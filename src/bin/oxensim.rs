@@ -447,8 +447,10 @@ fn main() {
     info!("oxensim starting!");
     setup(&mut net, &mut nodes, now);
     let now = run(&mut net, &mut nodes, now, Duration::hours(1));
-    net.config.partition(&[n1, n2], 1.00);
+    net.config.set_packet_loss(n1, n2, 1.00);
+    net.config.set_packet_loss(n2, n1, 1.00);
     let now = run(&mut net, &mut nodes, now, Duration::hours(1));
-    net.config.partition(&[n1, n2], 0.02);
+    net.config.set_packet_loss(n1, n2, 0.02);
+    net.config.set_packet_loss(n2, n1, 0.02);
     let now = run(&mut net, &mut nodes, now, Duration::hours(1));
 }

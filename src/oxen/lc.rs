@@ -59,6 +59,12 @@ impl LastContact {
         self.peers.insert(from);
         self.peers.insert(to);
 
+        if from == to {
+            // we skip adding information about nodes to themselves because
+            // these edges don't really exist in the graph!
+            return;
+        }
+
         let entry = self.tab.entry(from, to).or_insert(NEG_INFTY);
 
         if *entry < time {
@@ -72,7 +78,9 @@ impl LastContact {
     pub fn usable(
         &self, from: &Sid, to: &Sid, now: Timespec, thresh: Duration
     ) -> bool {
-        from == to || self.get(from, to) > now - thresh
+        // we have to mark edges from a node to itself as unusable because these
+        // don't really exist in the graph!
+        from != to && self.get(from, to) > now - thresh
     }
 
     /// Determines if the indicated peer is possibly reachable, given some
@@ -83,6 +91,12 @@ impl LastContact {
         &self, to: &Sid, now: Timespec, thresh: Duration
     ) -> bool {
         for p in self.peers.iter() {
+            if p == to {
+                // we skip checking if a node is reachable from itself because
+                // these edges don't really exist in the graph.
+                continue;
+            }
+
             if self.usable(p, to, now, thresh) {
                 return true;
             }
@@ -102,6 +116,12 @@ impl LastContact {
         let mut parents: HashMap<Sid, Sid> = HashMap::new();
 
         let mut queue: VecDeque<Sid> = VecDeque::new();
+
+        if *to == self.me {
+            // we skip checking if there's a route from a node to ourself
+            // because this edge doesn't actually exist!
+            return None;
+        }
 
         distances.insert(self.me, 0);
         queue.push_back(self.me);
@@ -180,7 +200,7 @@ fn test_route_undirected() {
         lc
     };
 
-    assert_eq!(Some(me), lc.route(&me, now, dur));
+    assert_eq!(None,     lc.route(&me, now, dur));
     assert_eq!(Some(n1), lc.route(&n1, now, dur));
     assert_eq!(Some(n1), lc.route(&n2, now, dur));
     assert_eq!(Some(n1), lc.route(&n3, now, dur));
@@ -232,7 +252,7 @@ fn test_route_directed() {
         lc
     };
 
-    assert_eq!(Some(me), lc.route(&me, now, dur));
+    assert_eq!(None,     lc.route(&me, now, dur));
     assert_eq!(Some(n1), lc.route(&n1, now, dur));
     assert_eq!(Some(n1), lc.route(&n2, now, dur));
     assert_eq!(Some(n3), lc.route(&n3, now, dur));
@@ -278,7 +298,7 @@ fn test_route_shortest_path() {
         lc
     };
 
-    assert_eq!(Some(me), lc.route(&me, now, dur));
+    assert_eq!(None,     lc.route(&me, now, dur));
     assert_eq!(Some(n1), lc.route(&n1, now, dur));
     assert_eq!(Some(n1), lc.route(&n2, now, dur));
     assert_eq!(Some(n1), lc.route(&n3, now, dur));

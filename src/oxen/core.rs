@@ -105,6 +105,10 @@ impl Oxen {
 
     pub fn add_peer<H>(&mut self, hdlr: &mut H, sid: Sid)
     where H: OxenHandler {
+        if sid == hdlr.me() {
+            return;
+        }
+
         self.peers.insert(sid);
         self.peer_status.insert(sid, PeerStatus::Unchecked);
 
@@ -182,6 +186,10 @@ impl Oxen {
         let peers: Vec<Sid> = self.peers.iter().cloned().collect();
 
         for p in peers {
+            if p == hdlr.me() {
+                continue;
+            }
+
             self.send_with_redelivery(hdlr, &p, MsgDataBody::MsgBrd(MsgBrd {
                 seq: 0,
                 data: data.clone(),
@@ -191,6 +199,11 @@ impl Oxen {
 
     pub fn send_one<H>(&mut self, hdlr: &mut H, to: Sid, data: Vec<u8>)
     where H: OxenHandler {
+        if to == hdlr.me() {
+            error!("tried to send a one-to-one message to ourself! dropping.");
+            return;
+        }
+
         self.send_with_redelivery(hdlr, &to, MsgDataBody::MsgOne(MsgOne {
             seq: 0,
             data: data,
@@ -203,6 +216,17 @@ impl Oxen {
 
         // TODO: fail after a number of retries
         // TODO: retry in longer intervals
+
+        debug!("redelivering {} to {}",
+            match pending.msg.body {
+                MsgDataBody::Missing => "nothing?",
+                MsgDataBody::MsgSync(_) => "syn",
+                MsgDataBody::MsgFinal(_) => "fin",
+                MsgDataBody::MsgBrd(_) => "brd",
+                MsgDataBody::MsgOne(_) => "one",
+            },
+            pending.to
+        );
 
         pending.redeliver = hdlr.timer_set(pending.interval);
 
@@ -219,6 +243,11 @@ impl Oxen {
 
     fn send_with_redelivery<H>(&mut self, hdlr: &mut H, to: &Sid, m: MsgDataBody)
     where H: OxenHandler {
+        if *to == hdlr.me() {
+            error!("oxen tried to send a message to itself! dropping.");
+            return;
+        }
+
         let ival = Duration::milliseconds(800);
 
         let id = random();
@@ -251,6 +280,11 @@ impl Oxen {
 
     fn routed<H, X>(&mut self, hdlr: &mut H, to: &Sid, data: X) -> bool
     where H: OxenHandler, xenc::Value: From<X> {
+        if *to == hdlr.me() {
+            error!("oxen tried to send a routed message to itself! dropping.");
+            return false;
+        }
+
         let thresh = Duration::seconds(20);
 
         let route = match self.lc.route(to, hdlr.now(), thresh) {
@@ -263,27 +297,12 @@ impl Oxen {
         true
     }
 
-    fn last_contact_gossip<H>(&mut self, hdlr: &mut H)
-    where H: OxenHandler {
-        self.gossip_timer = hdlr.timer_set(Duration::milliseconds(1000));
-
-        let gossip = self.make_gossip();
-
-        for p in self.peers.iter() {
-            hdlr.queue_send(*p, Parcel {
-                ka_rq: None,
-                ka_ok: None,
-                body: ParcelBody::LcGossip(gossip.clone()),
-            });
-        }
-    }
-
     fn check_last_contact<H>(&mut self, hdlr: &mut H)
     where H: OxenHandler {
         self.lc_timer = hdlr.timer_set(Duration::milliseconds(1000));
 
         for p in self.peers.iter() {
-            if hdlr.me() == *p {
+            if *p == hdlr.me() {
                 continue;
             }
 
@@ -304,27 +323,30 @@ impl Oxen {
                 });
             }
 
+            let reachable = self.lc
+                .reachable(p, hdlr.now(), Duration::seconds(20));
+
             let status = self.peer_status
                 .entry(*p)
                 .or_insert(PeerStatus::Unchecked);
 
             match *status {
                 PeerStatus::Unchecked => {
-                    if age < 20 {
+                    if reachable {
                         info!("promoting {} out of unchecked", p);
                         *status = PeerStatus::Available;
                     }
                 },
 
                 PeerStatus::Available => {
-                    if age >= 20 {
+                    if !reachable {
                         info!("{} has become unavailable", p);
                         *status = PeerStatus::Unavailable;
                     }
                 },
 
                 PeerStatus::Unavailable => {
-                    if age < 20 {
+                    if reachable {
                         info!("{} is available again", p);
                         *status = PeerStatus::Available;
                     }
@@ -335,14 +357,19 @@ impl Oxen {
 
     fn handle_msg_data<H>(&mut self, hdlr: &mut H, data: MsgData)
     where H: OxenHandler {
+        // simply forward the message if not to me
+
         if data.to != hdlr.me() {
-            hdlr.queue_send(data.to, Parcel {
+            let to = data.to;
+            self.routed(hdlr, &to, Parcel {
                 ka_rq: None,
                 ka_ok: None,
                 body: ParcelBody::MsgData(data),
             });
             return;
         }
+
+        // otherwise, acknowledge it and continue handling
 
         if let Some(id) = data.id {
             let parcel = Parcel {
@@ -354,7 +381,7 @@ impl Oxen {
                     id: id,
                 })
             };
-            hdlr.queue_send(data.to, parcel);
+            self.routed(hdlr, &data.fr, parcel);
         }
 
         if let MsgDataBody::MsgSync(syn) = data.body {
@@ -364,8 +391,11 @@ impl Oxen {
 
     fn handle_msg_ack<H>(&mut self, hdlr: &mut H, data: MsgAck)
     where H: OxenHandler {
+        // simply forward the acknowledgement if not to me
+
         if data.to != hdlr.me() {
-            hdlr.queue_send(data.to, Parcel {
+            let to = data.to;
+            self.routed(hdlr, &to, Parcel {
                 ka_rq: None,
                 ka_ok: None,
                 body: ParcelBody::MsgAck(data),
@@ -373,9 +403,30 @@ impl Oxen {
             return;
         }
 
+        // otherwise, handle it
+
         if let Some(pending) = self.pending_msgs.remove(&(data.fr, data.id)) {
             hdlr.timer_cancel(pending.redeliver);
             self.pending_msg_timers.remove(&pending.redeliver);
+        }
+    }
+
+    fn last_contact_gossip<H>(&mut self, hdlr: &mut H)
+    where H: OxenHandler {
+        self.gossip_timer = hdlr.timer_set(Duration::milliseconds(1000));
+
+        let gossip = self.make_gossip();
+
+        for p in self.peers.iter() {
+            if *p == hdlr.me() {
+                continue;
+            }
+
+            hdlr.queue_send(*p, Parcel {
+                ka_rq: None,
+                ka_ok: None,
+                body: ParcelBody::LcGossip(gossip.clone()),
+            });
         }
     }
 
@@ -389,19 +440,17 @@ impl Oxen {
     }
 
     fn make_gossip(&self) -> LcGossip {
-        let peers: Vec<Sid> = self.peers.iter().cloned()
-            .filter(|_| random())
-            .collect();
+        let cols: Vec<Sid> = self.peers.iter().cloned().collect();
 
         let mut rows = HashMap::new();
 
-        for p in peers.iter() {
-            rows.insert(*p, self.peers.iter().map(|q| self.lc.get(p, q)).collect());
+        for p in self.peers.iter() {
+            rows.insert(*p, cols.iter().map(|q| self.lc.get(p, q)).collect());
         }
 
         LcGossip {
             rows: rows,
-            cols: peers,
+            cols: cols,
         }
     }
 }

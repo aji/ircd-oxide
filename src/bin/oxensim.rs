@@ -160,6 +160,8 @@ impl NetConfig {
 }
 
 struct NetSim<'cfg> {
+    configured: bool,
+
     log_prefix: Arc<Mutex<String>>,
 
     events: BinaryHeap<Event>,
@@ -171,6 +173,8 @@ struct NetSim<'cfg> {
 impl<'cfg> NetSim<'cfg> {
     fn new(config: &'cfg mut NetConfig, pfx: Arc<Mutex<String>>) -> NetSim<'cfg> {
         NetSim {
+            configured: false,
+
             log_prefix: pfx,
 
             events: BinaryHeap::new(),
@@ -228,6 +232,12 @@ impl<'cfg> NetSim<'cfg> {
             Duration::milliseconds(latency_ms)
         };
 
+        {
+            let mut v: Vec<u8> = Vec::new();
+            data.write(&mut v);
+            //info!(" --> {}  {}", to, String::from_utf8_lossy(&v[..]));
+        }
+
         // now package it all up and add it to the queue
         self.events.push(Event {
             to: to,
@@ -284,7 +294,8 @@ impl<'r, 'ns> OxenHandler for BackSim<'r, 'ns> {
 
     fn queue_send<X>(&mut self, peer: Sid, data: X)
     where xenc::Value: From<X> {
-        self.sim.queue_send(self.now, self.me, peer, From::from(data));
+        let data_xenc = From::from(data);
+        self.sim.queue_send(self.now, self.me, peer, data_xenc);
     }
 
     fn timer_set(&mut self, at: Duration) -> Timer {
@@ -351,6 +362,11 @@ fn run<'a, 'cfg>(
 ) -> Timespec {
     let end = now + dur;
 
+    if !sim.configured {
+        sim.configured = true;
+        setup(sim, nodes, now);
+    }
+
     loop {
         let evt = match sim.next_event() {
             Some(evt) => evt,
@@ -378,7 +394,6 @@ fn run<'a, 'cfg>(
         }
 
         if now > end {
-            info!("all done!");
             return now;
         }
     }
@@ -434,7 +449,7 @@ fn main() {
 
     let mut net = NetSim::new(&mut cfg, pfx);
     let mut nodes = HashMap::new();
-    let now = time::get_time();
+    let mut now = time::get_time();
 
     let delay = Normal::new(1000.0, 300.0);
 
@@ -444,13 +459,31 @@ fn main() {
     nodes.insert(n4, oxen(&mut net, n4, now, &delay));
     nodes.insert(n5, oxen(&mut net, n5, now, &delay));
 
+    let dur = Duration::minutes(5);
+
     info!("oxensim starting!");
-    setup(&mut net, &mut nodes, now);
-    let now = run(&mut net, &mut nodes, now, Duration::hours(1));
-    net.config.set_packet_loss(n1, n2, 1.00);
-    net.config.set_packet_loss(n2, n1, 1.00);
-    let now = run(&mut net, &mut nodes, now, Duration::hours(1));
-    net.config.set_packet_loss(n1, n2, 0.02);
-    net.config.set_packet_loss(n2, n1, 0.02);
-    let now = run(&mut net, &mut nodes, now, Duration::hours(1));
+
+    // we now simulate the worst network ever
+
+    for _ in 0..3 {
+        info!("partitioning {} and {} from {} {} and {}", n1, n2, n3, n4, n5);
+        net.config.partition(&[n1, n2], 1.00);
+        now = run(&mut net, &mut nodes, now, dur);
+
+        info!("healing partition");
+        net.config.partition(&[n1, n2], 0.02);
+        now = run(&mut net, &mut nodes, now, dur);
+
+        info!("killing link between {} and {}", n1, n2);
+        net.config.set_packet_loss(n1, n2, 1.00);
+        net.config.set_packet_loss(n2, n1, 1.00);
+        now = run(&mut net, &mut nodes, now, dur);
+
+        info!("restored link between {} and {}", n1, n2);
+        net.config.set_packet_loss(n1, n2, 0.02);
+        net.config.set_packet_loss(n2, n1, 0.02);
+        now = run(&mut net, &mut nodes, now, dur);
+    }
+
+    info!("oxensim finishing");
 }

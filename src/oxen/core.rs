@@ -28,7 +28,7 @@ pub struct Oxen {
     lc: LastContact,
     peer_status: HashMap<Sid, PeerStatus>,
 
-    pending_ka: HashMap<Sid, PendingKeepalive>,
+    pending_ka: HashMap<(Sid, KeepaliveId), Timespec>,
     pending_msgs: HashMap<(Sid, MsgId), PendingMessage>,
     pending_msg_timers: HashMap<Timer, (Sid, MsgId)>,
 
@@ -60,12 +60,6 @@ enum PeerStatus {
     Unchecked,
     Available,
     Unavailable,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-struct PendingKeepalive {
-    id: KeepaliveId,
-    at: Timespec,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -141,13 +135,8 @@ impl Oxen {
         if let Some(kk) = p.ka_ok {
             debug!("received keepalive {} ok from {}", kk, from);
 
-            match self.pending_ka.remove(&from) {
-                Some(pka) if pka.id == kk => {
-                    self.lc.put(hdlr.me(), from, pka.at);
-                },
-                Some(pka) => { // pka.id != kk
-                    self.pending_ka.insert(from, pka);
-                },
+            match self.pending_ka.remove(&(from, kk)) {
+                Some(at) => self.lc.put(hdlr.me(), from, at),
                 _ => info!("stray keepalive {} from {}", kk, from),
             }
         }
@@ -312,10 +301,7 @@ impl Oxen {
             if age >= 2 {
                 debug!("sending keepalive to {}", p);
                 let ka = random();
-                self.pending_ka.insert(*p, PendingKeepalive {
-                    id: ka,
-                    at: hdlr.now(),
-                });
+                self.pending_ka.insert((*p, ka), hdlr.now());
                 hdlr.queue_send(*p, Parcel {
                     ka_rq: Some(ka),
                     ka_ok: None,

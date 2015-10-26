@@ -9,9 +9,12 @@
 #![allow(unused_variables)] // grumble grumble
 
 use rand::random;
+use std::cmp;
+use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::From;
+use std::marker::PhantomData;
 use time::{Duration, Timespec};
 
 use oxen::data::*;
@@ -31,6 +34,9 @@ pub struct Oxen {
     pending_ka: HashMap<(Sid, KeepaliveId), Timespec>,
     pending_msgs: HashMap<(Sid, MsgId), PendingMessage>,
     pending_msg_timers: HashMap<Timer, (Sid, MsgId)>,
+
+    brd_inbox: Inboxes<Broadcast>,
+    one_inbox: Inboxes<OneToOne>,
 
     gossip_timer: Timer,
     lc_timer: Timer,
@@ -83,6 +89,9 @@ impl Oxen {
             pending_ka: HashMap::new(),
             pending_msgs: HashMap::new(),
             pending_msg_timers: HashMap::new(),
+
+            brd_inbox: Inboxes::new(),
+            one_inbox: Inboxes::new(),
 
             gossip_timer: 0,
             lc_timer: 0,
@@ -370,8 +379,32 @@ impl Oxen {
             self.routed(hdlr, &data.fr, parcel);
         }
 
-        if let MsgDataBody::MsgSync(syn) = data.body {
-            info!("got synchronization from {}", data.fr);
+        match data.body {
+            MsgDataBody::MsgSync(syn) => {
+                info!("got synchronization from {}", data.fr);
+
+                // TODO: check for logic errors
+                self.brd_inbox.get_mut(data.fr).synchronize(syn.brd);
+                self.one_inbox.get_mut(data.fr).synchronize(syn.one);
+            },
+
+            MsgDataBody::MsgFinal(fin) => {
+                info!("got finalization from {}", data.fr);
+
+                // TODO: check for logic errors
+                self.brd_inbox.get_mut(data.fr).finalize();
+                self.one_inbox.get_mut(data.fr).finalize();
+            },
+
+            MsgDataBody::MsgBrd(brd) => {
+                self.brd_inbox.get_mut(data.fr).incoming(brd.seq, brd.data, |_| ());
+            },
+
+            MsgDataBody::MsgOne(one) => {
+                self.one_inbox.get_mut(data.fr).incoming(one.seq, one.data, |_| ());
+            },
+
+            _ => { },
         }
     }
 
@@ -439,4 +472,175 @@ impl Oxen {
             cols: cols,
         }
     }
+}
+
+struct Inbox<Kind: 'static> {
+    synchronized: bool,
+    next_seq: SeqNum,
+    pending: BinaryHeap<InboxPending>,
+    _kind: PhantomData<&'static mut Kind>,
+}
+
+struct Broadcast;
+struct OneToOne;
+
+struct InboxPending {
+    seq: SeqNum,
+    data: Vec<u8>,
+}
+
+impl PartialOrd for InboxPending {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.seq.partial_cmp(&other.seq).map(|o| o.reverse())
+    }
+}
+
+impl Ord for InboxPending {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.seq.cmp(&other.seq).reverse()
+    }
+}
+
+impl PartialEq for InboxPending {
+    fn eq(&self, other: &Self) -> bool {
+        self.seq == other.seq
+    }
+}
+
+impl Eq for InboxPending { }
+
+struct Inboxes<Kind: 'static> {
+    map: HashMap<Sid, Inbox<Kind>>,
+}
+
+impl<Kind> Inbox<Kind> {
+    fn new() -> Inbox<Kind> {
+        Inbox {
+            synchronized: false,
+            next_seq: 0,
+            pending: BinaryHeap::new(),
+            _kind: PhantomData
+        }
+    }
+
+    fn synchronized(&self) -> bool {
+        self.synchronized
+    }
+
+    fn synchronize(&mut self, seq: SeqNum) {
+        self.synchronized = true;
+        self.next_seq = seq + 1;
+    }
+
+    fn finalize(&mut self) {
+        self.synchronized = false;
+    }
+
+    fn incoming<F>(&mut self, seq: SeqNum, data: Vec<u8>, mut deliver: F)
+    where F: FnMut(Vec<u8>) {
+        self.pending.push(InboxPending { seq: seq, data: data });
+
+        loop {
+            let eat = match self.pending.peek() {
+                Some(m) => m.seq <= self.next_seq,
+                _ => false,
+            };
+
+            if !eat {
+                return;
+            }
+
+            let next_seq = if let Some(m) = self.pending.pop() {
+                if m.seq < self.next_seq {
+                    self.next_seq
+                } else {
+                    deliver(m.data);
+                    self.next_seq + 1
+                }
+            } else {
+                error!("logic error: good peek followed by bad pop?");
+                return;
+            };
+
+            self.next_seq = next_seq;
+        }
+    }
+}
+
+impl<Kind> Inboxes<Kind> {
+    fn new() -> Inboxes<Kind> {
+        Inboxes {
+            map: HashMap::new(),
+        }
+    }
+
+    fn get_mut(&mut self, sid: Sid) -> &mut Inbox<Kind> {
+        self.map.entry(sid).or_insert_with(|| Inbox::new())
+    }
+}
+
+#[test]
+fn test_inbox_easy() {
+    let mut inbox: Inbox<Broadcast> = Inbox::new();
+
+    inbox.synchronize(99);
+    inbox.incoming(100, b"a".to_vec(), |v| assert!(v[0] == b'a'));
+    inbox.incoming(101, b"b".to_vec(), |v| assert!(v[0] == b'b'));
+    inbox.incoming(102, b"c".to_vec(), |v| assert!(v[0] == b'c'));
+    inbox.incoming(103, b"d".to_vec(), |v| assert!(v[0] == b'd'));
+}
+
+#[test]
+fn test_inbox_backwards() {
+    let mut inbox: Inbox<Broadcast> = Inbox::new();
+    let mut received = Vec::new();
+
+    inbox.synchronize(99);
+    inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(102, b"c".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
+
+    println!("{:?}", received);
+    assert!(received == b"abcd");
+}
+
+#[test]
+fn test_inbox_duplicates() {
+    let mut inbox: Inbox<Broadcast> = Inbox::new();
+    let mut received = Vec::new();
+
+    inbox.synchronize(99);
+    inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(102, b"c".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(102, b"c".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
+
+    println!("{:?}", received);
+    assert!(received == b"abcd");
+}
+
+#[test]
+fn test_inbox_mishmash() {
+    let mut inbox: Inbox<Broadcast> = Inbox::new();
+    let mut received = Vec::new();
+
+    inbox.synchronize(99);
+    inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(102, b"c".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(102, b"c".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
+
+    println!("{:?}", received);
+    assert!(received == b"abcd");
 }

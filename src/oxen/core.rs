@@ -6,7 +6,49 @@
 
 //! The core Oxen logic
 
-#![allow(unused_variables)] // grumble grumble
+// Known problems:
+//
+//   o  Redelivery logic, all of it! If a host is unreachable and we have
+//      pending messages to that host, we'll just keep retrying over and over
+//      until the host becomes reachable again. There are some protocol things
+//      that need to be figured out until this can be safely addressed, such as
+//      how specifically to handle {dis,re}appearing hosts. I'm pretty sure I
+//      want peers to request resynchronize in that scenario, but I don't want
+//      to just assume that's how it will work at the moment.
+//
+//   o  Every use of HashMap, HashSet, and BinaryHeap, particularly keepalives.
+//      While Rust doesn't itself have memory leaks, hash tables "can", in the
+//      sense that we can put something in them that we never use again and
+//      it would never be cleared. We should periodically garbage collect these,
+//      for example clearing all keepalives above a certain threshold. For
+//      example, it's not useful to keep around a pending keepalive that would
+//      not cause the responding host to become reachable.
+//
+//   o  Embedded keepalives. The protocol as specified supports requesting and
+//      responding to keepalives in regular parcels. Parts of the code are ready
+//      to work with this, but there are still opportunities to integrate
+//      embedded keepalives throughout the code. This optimization would only
+//      save a small number of packets though (I think) so it's lower priority.
+//
+//   o  Handle Byzantine failure better (at all, even). Most of this code is
+//      written with the assumption that peers are behaving correctly. For
+//      example, we simply merge any incoming last contact table into our own.
+//      A peer could send obscenely large values for the entire thing and
+//      basically render the entire mechanism useless. A much more subtle
+//      example is the potential leak in instances of Inbox where the next
+//      expected packet is never received and we continue to collect later
+//      packets forever. A bug that prevents any packet from being redelivered
+//      would cause this to happen, which is a pretty significant bug overall.
+//
+// This is by no means a complete list! I've included it as a reminder of the
+// work left to make Oxen a solid solution. Much of what ircd-oxide claims to be
+// rests on the abstractions that Oxen provides being airtight. If Oxen cannot
+// handle failure modes gracefully, then the rest of the IRCD cannot hope to.
+// I've spent a lot of the past week rushing a framework to allow further growth
+// and an implementation that will work well enough to support oxide development
+// elsewhere, but I've cut a lot of corners in the process and am simply noting
+// some of the harder problems that I've glossed over in the name of simplicity
+// so that they're not missed when I come back for round 2.
 
 use rand::random;
 use std::cmp;
@@ -388,14 +430,6 @@ impl Oxen {
                 self.one_inbox.get_mut(data.fr).synchronize(syn.one);
             },
 
-            MsgDataBody::MsgFinal(fin) => {
-                info!("got finalization from {}", data.fr);
-
-                // TODO: check for logic errors
-                self.brd_inbox.get_mut(data.fr).finalize();
-                self.one_inbox.get_mut(data.fr).finalize();
-            },
-
             MsgDataBody::MsgBrd(brd) => {
                 self.brd_inbox.get_mut(data.fr).incoming(brd.seq, brd.data, |_| ());
             },
@@ -530,10 +564,6 @@ impl<Kind> Inbox<Kind> {
     fn synchronize(&mut self, seq: SeqNum) {
         self.synchronized = true;
         self.next_seq = seq + 1;
-    }
-
-    fn finalize(&mut self) {
-        self.synchronized = false;
     }
 
     fn incoming<F>(&mut self, seq: SeqNum, data: Vec<u8>, mut deliver: F)

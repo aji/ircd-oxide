@@ -67,6 +67,7 @@ const REACHABILITY_THRESH: i64 = 20;
 pub type Timer = u64;
 
 pub struct Oxen {
+    me: Sid,
     peers: HashSet<Sid>,
 
     lc: LastContact,
@@ -96,8 +97,6 @@ pub enum OxenEvent {
 pub trait OxenHandler {
     fn now(&self) -> Timespec;
 
-    fn me(&self) -> Sid;
-
     fn queue_send<X>(&mut self, peer: Sid, data: X)
     where xenc::Value: From<X>;
 
@@ -123,12 +122,13 @@ struct PendingMessage {
 }
 
 impl Oxen {
-    pub fn new<H>(hdlr: &mut H) -> Oxen
+    pub fn new<H>(hdlr: &mut H, me: Sid) -> Oxen
     where H: OxenHandler {
         let mut oxen = Oxen {
+            me: me,
             peers: HashSet::new(),
 
-            lc: LastContact::new(hdlr.me()),
+            lc: LastContact::new(me),
             peer_status: HashMap::new(),
 
             pending_ka: HashMap::new(),
@@ -146,7 +146,7 @@ impl Oxen {
             ka_cleanup_timer: 0,
         };
 
-        oxen.peers.insert(hdlr.me());
+        oxen.peers.insert(me);
 
         // start these timers
         oxen.last_contact_gossip(hdlr);
@@ -158,7 +158,7 @@ impl Oxen {
 
     pub fn dump_stats<H>(&self, hdlr: &mut H)
     where H: OxenHandler {
-        info!("stats for {}", hdlr.me());
+        info!("stats for {}", self.me);
 
         info!("  pending keepalives      : {:6}", self.pending_ka.len());
         info!("  pending messages        : {:6}", self.pending_msgs.len());
@@ -198,7 +198,7 @@ impl Oxen {
 
     pub fn add_peer<H>(&mut self, hdlr: &mut H, sid: Sid)
     where H: OxenHandler {
-        if sid == hdlr.me() {
+        if sid == self.me {
             return;
         }
 
@@ -243,7 +243,7 @@ impl Oxen {
             debug!("received keepalive {} ok from {}", kk, from);
 
             match self.pending_ka.remove(&(from, kk)) {
-                Some(at) => self.lc.put(hdlr.me(), from, at),
+                Some(at) => self.lc.put(self.me, from, at),
                 _ => warn!("stray keepalive {} from {}", kk, from),
             }
         }
@@ -290,7 +290,7 @@ impl Oxen {
         self.brd_seq = brd_seq;
 
         for p in peers {
-            if p == hdlr.me() {
+            if p == self.me {
                 continue;
             }
 
@@ -303,7 +303,7 @@ impl Oxen {
 
     pub fn send_one<H>(&mut self, hdlr: &mut H, to: Sid, data: Vec<u8>)
     where H: OxenHandler {
-        if to == hdlr.me() {
+        if to == self.me {
             error!("tried to send a one-to-one message to ourself! dropping.");
             return;
         }
@@ -355,7 +355,7 @@ impl Oxen {
 
     fn send_with_redelivery<H>(&mut self, hdlr: &mut H, to: &Sid, m: MsgDataBody)
     where H: OxenHandler {
-        if *to == hdlr.me() {
+        if *to == self.me {
             error!("oxen tried to send a message to itself! dropping.");
             return;
         }
@@ -366,7 +366,7 @@ impl Oxen {
 
         let msg = MsgData {
             to: *to,
-            fr: hdlr.me(),
+            fr: self.me,
             id: Some(id),
             body: m,
         };
@@ -392,7 +392,7 @@ impl Oxen {
 
     fn routed<H, X>(&mut self, hdlr: &mut H, to: &Sid, data: X) -> bool
     where H: OxenHandler, xenc::Value: From<X> {
-        if *to == hdlr.me() {
+        if *to == self.me {
             error!("oxen tried to send a routed message to itself! dropping.");
             return false;
         }
@@ -414,11 +414,11 @@ impl Oxen {
         self.lc_timer = hdlr.timer_set(Duration::milliseconds(1000));
 
         for p in self.peers.iter() {
-            if *p == hdlr.me() {
+            if *p == self.me {
                 continue;
             }
 
-            let lc = self.lc.get(&hdlr.me(), p);
+            let lc = self.lc.get(&self.me, p);
             let age = (hdlr.now() - lc).num_seconds();
 
             if age >= 2 {
@@ -488,7 +488,7 @@ impl Oxen {
     where H: OxenHandler, F: FnMut(&mut H, Sid, Vec<u8>) {
         // simply forward the message if not to me
 
-        if data.to != hdlr.me() {
+        if data.to != self.me {
             let to = data.to;
             self.routed(hdlr, &to, Parcel {
                 ka_rq: None,
@@ -506,7 +506,7 @@ impl Oxen {
                 ka_ok: None,
                 body: ParcelBody::MsgAck(MsgAck {
                     to: data.fr,
-                    fr: hdlr.me(),
+                    fr: self.me,
                     id: id,
                 })
             };
@@ -544,7 +544,7 @@ impl Oxen {
     where H: OxenHandler {
         // simply forward the acknowledgement if not to me
 
-        if data.to != hdlr.me() {
+        if data.to != self.me {
             let to = data.to;
             self.routed(hdlr, &to, Parcel {
                 ka_rq: None,
@@ -569,7 +569,7 @@ impl Oxen {
         let gossip = self.make_gossip();
 
         for p in self.peers.iter() {
-            if *p == hdlr.me() {
+            if *p == self.me {
                 continue;
             }
 

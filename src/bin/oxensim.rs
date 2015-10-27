@@ -294,8 +294,6 @@ struct BackSim<'r, 'ns: 'r> {
 impl<'r, 'ns> OxenHandler for BackSim<'r, 'ns> {
     fn now(&self) -> Timespec { self.now }
 
-    fn me(&self) -> Sid { self.me }
-
     fn queue_send<X>(&mut self, peer: Sid, data: X)
     where xenc::Value: From<X> {
         let data_xenc = From::from(data);
@@ -328,7 +326,7 @@ fn oxen<'a, 'cfg, S: IndependentSample<f64>>(
             me: peer,
         };
 
-        Oxen::new(&mut back)
+        Oxen::new(&mut back, peer)
     })
 }
 

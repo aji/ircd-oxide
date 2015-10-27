@@ -168,6 +168,8 @@ struct NetSim<'cfg> {
     canceled_timers: HashSet<Timer>,
 
     config: &'cfg mut NetConfig,
+
+    received: Table<Sid, Vec<Vec<u8>>>,
 }
 
 impl<'cfg> NetSim<'cfg> {
@@ -181,6 +183,8 @@ impl<'cfg> NetSim<'cfg> {
             canceled_timers: HashSet::new(),
 
             config: config,
+
+            received: Table::new(),
         }
     }
 
@@ -387,7 +391,16 @@ fn run<'a, 'cfg>(
                 };
 
                 match evt.ty {
-                    EventType::Packet(p) => n.incoming(&mut back, p.from, p.data),
+                    EventType::Packet(p) => {
+                        let to = evt.to.clone();
+                        n.incoming(&mut back, p.from, p.data, |back, fr, p| {
+                            back.sim.received
+                                .entry(to, fr)
+                                .or_insert_with(|| Vec::new())
+                                .push(p);
+                        });
+                    },
+
                     EventType::Timer(t) => n.timeout(&mut back, t.token),
                 }
             });
@@ -397,6 +410,39 @@ fn run<'a, 'cfg>(
             return now;
         }
     }
+}
+
+fn send_broadcast<'a, 'cfg>(
+    sim: &'a mut NetSim<'cfg>,
+    nodes: &'a mut HashMap<Sid, Oxen>,
+    now: Timespec,
+    fr: Sid,
+    data: Vec<u8>,
+) {
+    let mut back = BackSim {
+        sim: sim,
+        now: now,
+        me: fr,
+    };
+
+    nodes.get_mut(&fr).unwrap().send_broadcast(&mut back, data);
+}
+
+fn send_one<'a, 'cfg>(
+    sim: &'a mut NetSim<'cfg>,
+    nodes: &'a mut HashMap<Sid, Oxen>,
+    now: Timespec,
+    fr: Sid,
+    to: Sid,
+    data: Vec<u8>,
+) {
+    let mut back = BackSim {
+        sim: sim,
+        now: now,
+        me: fr,
+    };
+
+    nodes.get_mut(&fr).unwrap().send_one(&mut back, to, data);
 }
 
 mod logger {
@@ -443,8 +489,8 @@ fn main() {
 
     let mut cfg = NetConfig::complete(
         &[n1, n2, n3, n4, n5],
-        0.02, // 2% packet loss between all hosts
-        0.15, 0.01, // ~150ish ms latency between hosts
+        0.20, // 20% packet loss between all hosts
+        0.15, 0.05, // ~150ish ms latency between hosts
     );
 
     let mut net = NetSim::new(&mut cfg, pfx);
@@ -465,10 +511,26 @@ fn main() {
 
     // we now simulate the worst network ever
 
-    for _ in 0..3 {
+    for i in 0..3 {
         info!("partitioning {} and {} from {} {} and {}", n1, n2, n3, n4, n5);
         net.config.partition(&[n1, n2], 1.00);
         now = run(&mut net, &mut nodes, now, dur);
+
+        info!("sending some packets from {} to {}", n1, n3);
+        for j in 0..3 {
+            let v = format!("one:{},{}", i, j);
+            info!("      {}", v);
+            send_one(&mut net, &mut nodes, now, n1, n3, v.into_bytes());
+        }
+
+        for (sid, peer) in nodes.iter() {
+            let mut back = BackSim {
+                sim: &mut net,
+                now: now,
+                me: *sid,
+            };
+            peer.dump_stats(&mut back);
+        }
 
         info!("healing partition");
         net.config.partition(&[n1, n2], 0.02);
@@ -479,6 +541,22 @@ fn main() {
         net.config.set_packet_loss(n2, n1, 1.00);
         now = run(&mut net, &mut nodes, now, dur);
 
+        for (sid, peer) in nodes.iter() {
+            let mut back = BackSim {
+                sim: &mut net,
+                now: now,
+                me: *sid,
+            };
+            peer.dump_stats(&mut back);
+        }
+
+        info!("sending a broadcast from {}", n2);
+        for j in 0..3 {
+            let v = format!("brd:{},{}", i, j);
+            info!("      {}", v);
+            send_broadcast(&mut net, &mut nodes, now, n2, v.into_bytes());
+        }
+
         info!("restored link between {} and {}", n1, n2);
         net.config.set_packet_loss(n1, n2, 0.02);
         net.config.set_packet_loss(n2, n1, 0.02);
@@ -486,4 +564,25 @@ fn main() {
     }
 
     info!("oxensim finishing");
+
+    for (sid, peer) in nodes.iter() {
+        let mut back = BackSim {
+            sim: &mut net,
+            now: now,
+            me: *sid,
+        };
+        peer.dump_stats(&mut back);
+    }
+
+    for p in net.config.peers.iter() {
+        info!(" {} received", p);
+        for q in net.config.peers.iter() {
+            if let Some(vs) = net.received.get(p, q) {
+                info!("    from {}", q);
+                for v in vs.iter() {
+                    info!("      {}", String::from_utf8_lossy(&v[..]));
+                }
+            }
+        }
+    }
 }

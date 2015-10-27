@@ -154,6 +154,46 @@ impl Oxen {
         oxen
     }
 
+    pub fn dump_stats<H>(&self, hdlr: &mut H)
+    where H: OxenHandler {
+        info!("stats for {}", hdlr.me());
+
+        info!("  pending keepalives      : {:6}", self.pending_ka.len());
+        info!("  pending messages        : {:6}", self.pending_msgs.len());
+        info!("  pending message timers  : {:6}", self.pending_msg_timers.len());
+
+        info!("  last contact (since now)");
+        let now = hdlr.now();
+        let cols = self.peers.iter().fold(String::new(), |s, p| {
+            format!("{} {}", s, p)
+        });
+        info!("       {}", cols);
+        for p in self.peers.iter() {
+            let row = self.peers.iter().fold(String::new(), |s, q| {
+                if *p == *q {
+                    format!("{}   -", s)
+                } else {
+                    let t = (now - self.lc.get(p, q)).num_seconds();
+                    if t >= 1000 {
+                        format!("{} >??", s)
+                    } else if t <= -100 {
+                        format!("{} <??", s)
+                    } else {
+                        format!("{} {:3}", s, t)
+                    }
+                }
+            });
+            info!("    {}{}", *p, row);
+        }
+
+        info!("  peer statuses");
+
+        info!("  broadcast inboxes");
+        self.brd_inbox.dump_stats();
+        info!("  one to one inboxes");
+        self.one_inbox.dump_stats();
+    }
+
     pub fn add_peer<H>(&mut self, hdlr: &mut H, sid: Sid)
     where H: OxenHandler {
         if sid == hdlr.me() {
@@ -173,8 +213,13 @@ impl Oxen {
         }));
     }
 
-    pub fn incoming<H>(&mut self, hdlr: &mut H, from: Sid, data: xenc::Value)
-    where H: OxenHandler {
+    pub fn incoming<H, F>(
+        &mut self,
+        hdlr: &mut H,
+        from: Sid,
+        data: xenc::Value,
+        cb: F
+    ) where H: OxenHandler, F: FnMut(&mut H, Sid, Vec<u8>) {
         let p = match Parcel::from_xenc(data) {
             Ok(p) => p,
             Err(_) => {
@@ -203,7 +248,7 @@ impl Oxen {
 
         match p.body {
             ParcelBody::Missing => { },
-            ParcelBody::MsgData(data) => self.handle_msg_data(hdlr, data),
+            ParcelBody::MsgData(data) => self.handle_msg_data(hdlr, data, cb),
             ParcelBody::MsgAck(data) => self.handle_msg_ack(hdlr, data),
             ParcelBody::LcGossip(data) => self.handle_lc_gossip(hdlr, data),
         }
@@ -412,8 +457,8 @@ impl Oxen {
         }
     }
 
-    fn handle_msg_data<H>(&mut self, hdlr: &mut H, data: MsgData)
-    where H: OxenHandler {
+    fn handle_msg_data<H, F>(&mut self, hdlr: &mut H, data: MsgData, mut cb: F)
+    where H: OxenHandler, F: FnMut(&mut H, Sid, Vec<u8>) {
         // simply forward the message if not to me
 
         if data.to != hdlr.me() {
@@ -451,11 +496,17 @@ impl Oxen {
             },
 
             MsgDataBody::MsgBrd(brd) => {
-                self.brd_inbox.get_mut(data.fr).incoming(brd.seq, brd.data, |_| ());
+                let fr = data.fr.clone();
+                self.brd_inbox.get_mut(data.fr).incoming(brd.seq, brd.data, |d| {
+                    cb(hdlr, fr, d)
+                });
             },
 
             MsgDataBody::MsgOne(one) => {
-                self.one_inbox.get_mut(data.fr).incoming(one.seq, one.data, |_| ());
+                let fr = data.fr.clone();
+                self.one_inbox.get_mut(data.fr).incoming(one.seq, one.data, |d| {
+                    cb(hdlr, fr, d)
+                });
             },
 
             _ => { },
@@ -530,6 +581,7 @@ impl Oxen {
 
 struct Inbox<Kind: 'static> {
     synchronized: bool,
+    syn_seq: SeqNum,
     next_seq: SeqNum,
     pending: BinaryHeap<InboxPending>,
     _kind: PhantomData<&'static mut Kind>,
@@ -571,19 +623,21 @@ impl<Kind> Inbox<Kind> {
     fn new() -> Inbox<Kind> {
         Inbox {
             synchronized: false,
+            syn_seq: 0,
             next_seq: 0,
             pending: BinaryHeap::new(),
             _kind: PhantomData
         }
     }
 
-    fn synchronized(&self) -> bool {
-        self.synchronized
-    }
-
     fn synchronize(&mut self, seq: SeqNum) {
-        self.synchronized = true;
-        self.next_seq = seq + 1;
+        if !self.synchronized {
+            self.synchronized = true;
+            self.syn_seq = seq;
+            self.next_seq = seq + 1;
+        } else if seq != self.syn_seq {
+            error!("logic error: already synchronized!");
+        }
     }
 
     fn incoming<F>(&mut self, seq: SeqNum, data: Vec<u8>, mut deliver: F)
@@ -600,19 +654,32 @@ impl<Kind> Inbox<Kind> {
                 return;
             }
 
-            let next_seq = if let Some(m) = self.pending.pop() {
-                if m.seq < self.next_seq {
-                    self.next_seq
-                } else {
+            if let Some(m) = self.pending.pop() {
+                if m.seq == self.next_seq {
                     deliver(m.data);
-                    self.next_seq.wrapping_add(1)
+                    self.next_seq = self.next_seq.wrapping_add(1);
+                } else if m.seq > self.next_seq {
+                    self.pending.push(m);
+                    error!("logic error: tried to eat before anything ready");
+                    return;
                 }
             } else {
                 error!("logic error: good peek followed by bad pop?");
                 return;
-            };
+            }
+        }
+    }
 
-            self.next_seq = next_seq;
+    fn dump_stats(&self, sid: Sid) {
+        if self.synchronized {
+            info!("    {}: pending: {:3}  next_seq: {:10}",
+                    sid, self.pending.len(), self.next_seq);
+            for pending in self.pending.iter() {
+                info!("      {} {}", pending.seq,
+                    String::from_utf8_lossy(&pending.data[..]));
+            }
+        } else {
+            info!("    {}: (not synchronized)", sid);
         }
     }
 }
@@ -621,6 +688,12 @@ impl<Kind> Inboxes<Kind> {
     fn new() -> Inboxes<Kind> {
         Inboxes {
             map: HashMap::new(),
+        }
+    }
+
+    fn dump_stats(&self) {
+        for (sid, inbox) in self.map.iter() {
+            inbox.dump_stats(*sid);
         }
     }
 
@@ -683,6 +756,28 @@ fn test_inbox_mishmash() {
     inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
     inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
     inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(102, b"c".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(102, b"c".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
+
+    println!("{:?}", received);
+    assert!(received == b"abcd");
+}
+
+#[test]
+fn test_inbox_resync() {
+    let mut inbox: Inbox<Broadcast> = Inbox::new();
+    let mut received = Vec::new();
+
+    inbox.synchronize(99);
+    inbox.incoming(103, b"d".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
+    inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
+    inbox.synchronize(99);
     inbox.incoming(101, b"b".to_vec(), |v| received.push(v[0]));
     inbox.incoming(100, b"a".to_vec(), |v| received.push(v[0]));
     inbox.incoming(102, b"c".to_vec(), |v| received.push(v[0]));

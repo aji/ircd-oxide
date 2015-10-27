@@ -22,6 +22,10 @@ impl<K, V> Table<K, V> where K: Hash + Eq {
         self.rows.get(k1).and_then(|r| r.get(k2))
     }
 
+    pub fn get_mut(&mut self, k1: &K, k2: &K) -> Option<&mut V> {
+        self.rows.get_mut(k1).and_then(|r| r.get_mut(k2))
+    }
+
     pub fn put(&mut self, k1: K, k2: K, v: V) {
         self.rows.entry(k1).or_insert_with(|| HashMap::new()).insert(k2, v);
     }

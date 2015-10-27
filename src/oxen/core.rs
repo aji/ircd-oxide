@@ -16,13 +16,10 @@
 //      want peers to request resynchronize in that scenario, but I don't want
 //      to just assume that's how it will work at the moment.
 //
-//   o  Every use of HashMap, HashSet, and BinaryHeap, particularly keepalives.
-//      While Rust doesn't itself have memory leaks, hash tables "can", in the
-//      sense that we can put something in them that we never use again and
-//      it would never be cleared. We should periodically garbage collect these,
-//      for example clearing all keepalives above a certain threshold. For
-//      example, it's not useful to keep around a pending keepalive that would
-//      not cause the responding host to become reachable.
+//   o  Every use of HashMap, HashSet, and BinaryHeap. While Rust doesn't itself
+//      have real memory leaks, hash tables "can", in the sense that we can put
+//      something in them that we never use again and it would never be cleared.
+//      We should be periodically garbage collecting these.
 //
 //   o  Embedded keepalives. The protocol as specified supports requesting and
 //      responding to keepalives in regular parcels. Parts of the code are ready

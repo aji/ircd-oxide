@@ -65,6 +65,8 @@ use util::Sid;
 use xenc;
 use xenc::FromXenc;
 
+const REACHABILITY_THRESH: i64 = 20;
+
 pub type Timer = u64;
 
 pub struct Oxen {
@@ -245,7 +247,7 @@ impl Oxen {
 
             match self.pending_ka.remove(&(from, kk)) {
                 Some(at) => self.lc.put(hdlr.me(), from, at),
-                _ => info!("stray keepalive {} from {}", kk, from),
+                _ => warn!("stray keepalive {} from {}", kk, from),
             }
         }
 
@@ -398,7 +400,7 @@ impl Oxen {
             return false;
         }
 
-        let thresh = Duration::seconds(20);
+        let thresh = Duration::seconds(REACHABILITY_THRESH);
 
         let route = match self.lc.route(to, hdlr.now(), thresh) {
             Some(r) => r,
@@ -434,7 +436,7 @@ impl Oxen {
             }
 
             let reachable = self.lc
-                .reachable(p, hdlr.now(), Duration::seconds(20));
+                .reachable(p, hdlr.now(), Duration::seconds(REACHABILITY_THRESH));
 
             let status = self.peer_status
                 .entry(*p)
@@ -472,7 +474,7 @@ impl Oxen {
         let expired: Vec<_> = self.pending_ka
             .iter()
             .filter_map(|(k, v)| {
-                if (hdlr.now() - *v).num_seconds() > 30 {
+                if (hdlr.now() - *v).num_seconds() > REACHABILITY_THRESH {
                     Some(*k)
                 } else {
                     None

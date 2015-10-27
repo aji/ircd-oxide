@@ -77,6 +77,9 @@ pub struct Oxen {
     pending_msgs: HashMap<(Sid, MsgId), PendingMessage>,
     pending_msg_timers: HashMap<Timer, (Sid, MsgId)>,
 
+    brd_seq: SeqNum,
+    one_seq: HashMap<Sid, SeqNum>,
+
     brd_inbox: Inboxes<Broadcast>,
     one_inbox: Inboxes<OneToOne>,
 
@@ -132,6 +135,9 @@ impl Oxen {
             pending_msgs: HashMap::new(),
             pending_msg_timers: HashMap::new(),
 
+            brd_seq: random(),
+            one_seq: HashMap::new(),
+
             brd_inbox: Inboxes::new(),
             one_inbox: Inboxes::new(),
 
@@ -157,10 +163,13 @@ impl Oxen {
         self.peers.insert(sid);
         self.peer_status.insert(sid, PeerStatus::Unchecked);
 
+        let brd_seq = self.brd_seq;
+        let one_seq = *self.one_seq.entry(sid).or_insert_with(|| random());
+
         info!("synchronizing with {}", sid);
         self.send_with_redelivery(hdlr, &sid, MsgDataBody::MsgSync(MsgSync {
-            brd: 0,
-            one: 0,
+            brd: brd_seq,
+            one: one_seq,
         }));
     }
 
@@ -225,13 +234,16 @@ impl Oxen {
     where H: OxenHandler {
         let peers: Vec<Sid> = self.peers.iter().cloned().collect();
 
+        let brd_seq = self.brd_seq.wrapping_add(1);
+        self.brd_seq = brd_seq;
+
         for p in peers {
             if p == hdlr.me() {
                 continue;
             }
 
             self.send_with_redelivery(hdlr, &p, MsgDataBody::MsgBrd(MsgBrd {
-                seq: 0,
+                seq: brd_seq,
                 data: data.clone(),
             }));
         }
@@ -244,8 +256,16 @@ impl Oxen {
             return;
         }
 
+        let one_seq = match self.one_seq.get_mut(&to) {
+            Some(seq) => { *seq = seq.wrapping_add(1); *seq },
+            None => {
+                error!("tried to send a message to a non-synced node! dropping.");
+                return;
+            },
+        };
+
         self.send_with_redelivery(hdlr, &to, MsgDataBody::MsgOne(MsgOne {
-            seq: 0,
+            seq: one_seq,
             data: data,
         }));
     }
@@ -585,7 +605,7 @@ impl<Kind> Inbox<Kind> {
                     self.next_seq
                 } else {
                     deliver(m.data);
-                    self.next_seq + 1
+                    self.next_seq.wrapping_add(1)
                 }
             } else {
                 error!("logic error: good peek followed by bad pop?");

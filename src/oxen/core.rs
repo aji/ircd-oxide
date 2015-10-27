@@ -85,6 +85,7 @@ pub struct Oxen {
 
     gossip_timer: Timer,
     lc_timer: Timer,
+    ka_cleanup_timer: Timer,
 }
 
 pub enum OxenEvent {
@@ -143,6 +144,7 @@ impl Oxen {
 
             gossip_timer: 0,
             lc_timer: 0,
+            ka_cleanup_timer: 0,
         };
 
         oxen.peers.insert(hdlr.me());
@@ -150,6 +152,7 @@ impl Oxen {
         // start these timers
         oxen.last_contact_gossip(hdlr);
         oxen.check_last_contact(hdlr);
+        oxen.clean_old_keepalives(hdlr);
 
         oxen
     }
@@ -263,6 +266,11 @@ impl Oxen {
 
         if timer == self.gossip_timer {
             self.last_contact_gossip(hdlr);
+            return;
+        }
+
+        if timer == self.ka_cleanup_timer {
+            self.clean_old_keepalives(hdlr);
             return;
         }
 
@@ -454,6 +462,26 @@ impl Oxen {
                     }
                 },
             }
+        }
+    }
+
+    fn clean_old_keepalives<H>(&mut self, hdlr: &mut H)
+    where H: OxenHandler {
+        self.ka_cleanup_timer = hdlr.timer_set(Duration::seconds(20));
+
+        let expired: Vec<_> = self.pending_ka
+            .iter()
+            .filter_map(|(k, v)| {
+                if (hdlr.now() - *v).num_seconds() > 30 {
+                    Some(*k)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for k in expired.iter() {
+            self.pending_ka.remove(k);
         }
     }
 

@@ -236,12 +236,6 @@ impl<'cfg> NetSim<'cfg> {
             Duration::milliseconds(latency_ms)
         };
 
-        {
-            let mut v: Vec<u8> = Vec::new();
-            data.write(&mut v);
-            //info!(" --> {}  {}", to, String::from_utf8_lossy(&v[..]));
-        }
-
         // now package it all up and add it to the queue
         self.events.push(Event {
             to: to,
@@ -487,7 +481,7 @@ fn main() {
 
     let mut cfg = NetConfig::complete(
         &[n1, n2, n3, n4, n5],
-        0.20, // 20% packet loss between all hosts
+        0.02, // 2% packet loss between all hosts
         0.15, 0.05, // ~150ish ms latency between hosts
     );
 
@@ -580,6 +574,7 @@ fn main() {
                 for v in vs.iter() {
                     info!("      {}", String::from_utf8_lossy(&v[..]));
                 }
+                assert!(vs.len() == 9);
             }
         }
     }

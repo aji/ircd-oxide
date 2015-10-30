@@ -37,7 +37,9 @@
 //! In the future, to prevent the unbounded growth of expired claims, we may use
 //! some kind of strong consistency to clean up old expirations.
 
+use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::hash::Hash;
 
 use state::diff;
 use state::Clock;
@@ -123,7 +125,7 @@ impl<Owner: 'static, Over: 'static> Claim<Owner, Over> {
         }
     }
 
-    /// Determines if the claim on the nickname is valid
+    /// Determines if the claim is valid
     pub fn is_valid(&self) -> bool {
         self.claimed > self.expired
     }
@@ -177,6 +179,23 @@ impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
         }
 
         self
+    }
+}
+
+/// A map of claims
+pub struct ClaimMap<Owner: 'static, Over: 'static + Eq + Hash> {
+    map: HashMap<Over, Claim<Owner, Over>>,
+}
+
+impl<Owner: 'static, Over: 'static + Eq + Hash> ClaimMap<Owner, Over> {
+    pub fn new() -> ClaimMap<Owner, Over> {
+        ClaimMap {
+            map: HashMap::new()
+        }
+    }
+
+    pub fn is_claimed(&self, k: &Over) -> bool {
+        self.map.get(k).map(|cl| cl.is_valid()).unwrap_or(false)
     }
 }
 

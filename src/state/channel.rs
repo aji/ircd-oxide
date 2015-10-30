@@ -9,6 +9,10 @@
 use state::Clock;
 use state::StateItem;
 
+pub struct Channel {
+    topic: Topic,
+}
+
 #[derive(Clone)]
 pub struct Topic {
     ts: Clock,

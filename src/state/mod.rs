@@ -13,12 +13,16 @@ pub mod diff;
 pub mod id;
 pub mod masklist;
 pub mod user;
+pub mod world;
 
+pub use self::channel::Channel;
 pub use self::claim::Claim;
+pub use self::claim::ClaimMap;
 pub use self::clock::Clock;
 pub use self::id::Id;
 pub use self::id::IdGenerator;
 pub use self::masklist::MaskList;
+pub use self::world::World;
 
 /// `StateItem` will be implemented by all updatable pieces of global shared
 /// state. The `merge()` operation will be used to perform all updates, and

@@ -13,6 +13,7 @@ use state::Clocked;
 use state::Id;
 use state::StateItem;
 
+#[derive(Clone)]
 pub struct Channel {
     topic: Topic,
     users: HashMap<Id<()>, ChannelUser>,

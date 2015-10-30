@@ -183,6 +183,7 @@ impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
 }
 
 /// A map of claims
+#[derive(Clone)]
 pub struct ClaimMap<Owner: 'static, Over: 'static + Eq + Hash> {
     map: HashMap<Over, Claim<Owner, Over>>,
 }

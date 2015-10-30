@@ -106,3 +106,38 @@ impl StateItem for Clock {
         self
     }
 }
+
+/// A value that has an associated timestamp, and whose merge rules are based on
+/// taking the value with the newer clock.
+#[derive(Clone)]
+pub struct Clocked<T: Clone> {
+    clock: Clock,
+    data: T
+}
+
+impl<T: Clone> Clocked<T> {
+    pub fn new(data: T) -> Clocked<T> {
+        Clocked {
+            clock: Clock::neg_infty(),
+            data: data
+        }
+    }
+
+    pub fn now(sid: Sid, data: T) -> Clocked<T> {
+        Clocked {
+            clock: Clock::now(sid),
+            data: data
+        }
+    }
+}
+
+impl<T: Clone> StateItem for Clocked<T> {
+    fn merge(&mut self, other: &Clocked<T>) -> &mut Clocked<T> {
+        if self.clock < other.clock {
+            self.clock  = other.clock;
+            self.data   = other.data.clone();
+        }
+
+        self
+    }
+}

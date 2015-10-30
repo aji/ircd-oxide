@@ -61,3 +61,23 @@ pub trait StateItem: Clone {
     /// function should have.
     fn merge(&mut self, other: &Self) -> &mut Self;
 }
+
+impl<'r, K: 'r, V: 'r> StateItem for ::std::collections::HashMap<K, V>
+where K: Eq + ::std::hash::Hash + Clone, V: StateItem {
+    fn merge(&mut self, other: &Self) -> &mut Self {
+        for (k, v1) in self.iter_mut() {
+            match other.get(k) {
+                Some(v2) => { v1.merge(v2); }
+                None => { }
+            }
+        }
+
+        for (k, v2) in other.iter() {
+            if !self.contains_key(k) {
+                self.insert(k.clone(), v2.clone());
+            }
+        }
+
+        self
+    }
+}

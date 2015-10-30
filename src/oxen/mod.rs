@@ -25,5 +25,6 @@ pub mod data;
 pub mod lc;
 
 pub use self::core::Oxen;
+pub use self::core::OxenEvent;
 pub use self::core::OxenHandler;
 pub use self::core::Timer;

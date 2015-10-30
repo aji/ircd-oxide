@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use time::{Duration, Timespec, get_time};
 
 use ircd::util::{Sid, Table};
-use ircd::oxen::{Oxen, OxenHandler, Timer};
+use ircd::oxen::{Oxen, OxenEvent, OxenHandler, Timer};
 use ircd::xenc;
 
 struct Event {
@@ -385,11 +385,13 @@ fn run<'a, 'cfg>(
                 match evt.ty {
                     EventType::Packet(p) => {
                         let to = evt.to.clone();
-                        n.incoming(&mut back, p.from, p.data, |back, fr, p| {
-                            back.sim.received
-                                .entry(to, fr)
-                                .or_insert_with(|| Vec::new())
-                                .push(p);
+                        n.incoming(&mut back, p.from, p.data, |back, ev| {
+                            if let OxenEvent::Message(fr, d) = ev {
+                                back.sim.received
+                                    .entry(to, fr)
+                                    .or_insert_with(|| Vec::new())
+                                    .push(d);
+                            }
                         });
                     },
 

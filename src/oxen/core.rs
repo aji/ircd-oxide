@@ -263,7 +263,7 @@ impl Oxen {
         from: Sid,
         data: xenc::Value,
         cb: F
-    ) where H: OxenHandler, F: FnMut(&mut H, Sid, Vec<u8>) {
+    ) where H: OxenHandler, F: FnMut(&mut H, OxenEvent) {
         let p = match Parcel::from_xenc(data) {
             Ok(p) => p,
             Err(_) => {
@@ -533,7 +533,7 @@ impl Oxen {
     }
 
     fn handle_msg_data<H, F>(&mut self, hdlr: &mut H, data: MsgData, mut cb: F)
-    where H: OxenHandler, F: FnMut(&mut H, Sid, Vec<u8>) {
+    where H: OxenHandler, F: FnMut(&mut H, OxenEvent) {
         // simply forward the message if not to me
 
         if data.to != self.me {
@@ -573,14 +573,14 @@ impl Oxen {
             MsgDataBody::MsgBrd(brd) => {
                 let fr = data.fr.clone();
                 self.brd_inbox.get_mut(data.fr).incoming(brd.seq, brd.data, |d| {
-                    cb(hdlr, fr, d)
+                    cb(hdlr, OxenEvent::Message(fr, d))
                 });
             },
 
             MsgDataBody::MsgOne(one) => {
                 let fr = data.fr.clone();
                 self.one_inbox.get_mut(data.fr).incoming(one.seq, one.data, |d| {
-                    cb(hdlr, fr, d)
+                    cb(hdlr, OxenEvent::Message(fr, d))
                 });
             },
 

@@ -141,3 +141,11 @@ impl<T: Clone> StateItem for Clocked<T> {
         self
     }
 }
+
+impl<T: Clone> ::std::ops::Deref for Clocked<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.data
+    }
+}

@@ -37,19 +37,42 @@ pub trait Observer {
 }
 
 /// A struct for managing a [`World`](struct.World.html).
-pub struct WorldManager {
+pub struct WorldManager<'obs> {
     world: World,
-    observers: Vec<Box<Observer>>,
+    observers: Vec<Box<Observer + 'obs>>,
 }
 
-impl WorldManager {
+impl<'obs> WorldManager<'obs> {
     /// Creates a `WorldManager` with an empty `World`. In your new `World` you
     /// can be a heavy-handed dictator, a benevolent monarch, or establish a
     /// socialist oligarchy. The choice is yours!
-    pub fn new() -> WorldManager {
+    pub fn new() -> WorldManager<'obs> {
         WorldManager {
             world: World::new(),
             observers: Vec::new(),
+        }
+    }
+
+    /// Adds an `Observer` to the list of observers of this world
+    pub fn observe<O: Observer + 'obs>(&mut self, obs: O) {
+        self.observers.push(Box::new(obs));
+    }
+
+    /// Calls a function to close the given channel, if it exists.
+    pub fn update_channel<F>(&mut self, chanid: Id<Channel>, cb: F)
+    where F: FnOnce(&mut Channel) {
+        let old = self.world.clone();
+
+        if let Some(chan) = self.world.channels.get_mut(&chanid) {
+            cb(chan);
+        }
+
+        self.notify_observers(old);
+    }
+
+    fn notify_observers(&mut self, old: World) {
+        for obs in self.observers.iter_mut() {
+            obs.world_changed(&old, &self.world);
         }
     }
 }

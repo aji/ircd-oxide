@@ -4,6 +4,8 @@
 // This file is part of ircd-oxide and is protected under the terms contained in
 // the COPYING file in the project root.
 
+//! Server IDs.
+
 extern crate time;
 
 use std::convert::From;
@@ -11,15 +13,20 @@ use std::fmt;
 
 use xenc;
 
+/// The server ID type. As this type is little more than three octets, (and so
+/// smaller than a u32), it can be passed around freely and treated like a
+/// scalar.
 #[derive(Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Sid([u8; 3]);
 
 impl Sid {
+    /// Creates a new `Sid` from the given UTF-8 string.
     pub fn new(s: &str) -> Sid {
         let s = s.as_bytes();
         Sid([s[0], s[1], s[2]])
     }
 
+    /// Creates some sort of default `Sid`.
     pub fn identity() -> Sid {
         Sid::new("000")
     }

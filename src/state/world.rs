@@ -20,6 +20,7 @@ pub struct World {
 }
 
 impl World {
+    /// Creates an empty `World`.
     pub fn new() -> World {
         World {
             channels: HashMap::new(),
@@ -30,6 +31,8 @@ impl World {
 
 /// A trait for objects that can observe changes to the world and act on them.
 pub trait Observer {
+    /// Called when the `World` has changed. The caller is free to examine the
+    /// old and new `World`s to determine how to act.
     fn world_changed(&mut self, old: &World, new: &World);
 }
 
@@ -40,6 +43,9 @@ pub struct WorldManager {
 }
 
 impl WorldManager {
+    /// Creates a `WorldManager` with an empty `World`. In your new `World` you
+    /// can be a heavy-handed dictator, a benevolent monarch, or establish a
+    /// socialist oligarchy. The choice is yours!
     pub fn new() -> WorldManager {
         WorldManager {
             world: World::new(),

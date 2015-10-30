@@ -4,6 +4,8 @@
 // This file is part of ircd-oxide and is protected under the terms contained in
 // the COPYING file in the project root.
 
+//! Generic structures, or types owned by no single subsystem.
+
 pub mod sid;
 pub mod table;
 

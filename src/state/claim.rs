@@ -189,12 +189,14 @@ pub struct ClaimMap<Owner: 'static, Over: 'static + Eq + Hash> {
 }
 
 impl<Owner: 'static, Over: 'static + Eq + Hash> ClaimMap<Owner, Over> {
+    /// Creates an empty claim map.
     pub fn new() -> ClaimMap<Owner, Over> {
         ClaimMap {
             map: HashMap::new()
         }
     }
 
+    /// Returns `true` if the given object has a valid claim on it.
     pub fn is_claimed(&self, k: &Over) -> bool {
         self.map.get(k).map(|cl| cl.is_valid()).unwrap_or(false)
     }

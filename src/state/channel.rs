@@ -13,12 +13,14 @@ use state::Clocked;
 use state::Id;
 use state::StateItem;
 
+/// An IRC channel.
 #[derive(Clone)]
 pub struct Channel {
     topic: Topic,
     users: HashMap<Id<()>, ChannelUser>,
 }
 
+/// Extra data associated with a user in an IRC channel.
 #[derive(Clone)]
 pub struct ChannelUser {
     is_chanop: Clocked<bool>,
@@ -34,6 +36,8 @@ impl StateItem for ChannelUser {
     }
 }
 
+/// An IRC channel topic (may later be merged into `Channel` as a
+/// `Clocked<String>`).
 #[derive(Clone)]
 pub struct Topic {
     ts: Clock,

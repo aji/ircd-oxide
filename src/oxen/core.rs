@@ -64,8 +64,12 @@ use xenc::FromXenc;
 
 const REACHABILITY_THRESH: i64 = 20;
 
+/// The token type used to identify Oxen timers. When a timer is created, Oxen
+/// requests a `Timer` to be used to refer to it when the timer fires or is
+/// canceled.
 pub type Timer = u64;
 
+/// The main Oxen control structure.
 pub struct Oxen {
     me: Sid,
     peers: HashSet<Sid>,
@@ -88,20 +92,46 @@ pub struct Oxen {
     ka_cleanup_timer: Timer,
 }
 
+/// An event that the user can handle.
 pub enum OxenEvent {
+    /// An incoming message. `Sid` identifies the source.
     Message(Sid, Vec<u8>),
+    /// A peer has become visible, identified by the `Sid`.
     PeerVisible(Sid),
+    /// A peer is no longer visible, identified by the `Sid`.
     PeerVanished(Sid),
 }
 
+/// A trait implemented by the protocol user, designed to decouple Oxen from the
+/// implementation layer as much as possible.
+///
+/// An effort has been made to keep this trait small so as not to overwhelm the
+/// implementor.
 pub trait OxenHandler {
+    /// Returns the current time as a `Timespec`. `time::get_time` is sufficient
+    /// for most practical applications.
     fn now(&self) -> Timespec;
 
+    /// Queues an XENC value to be sent to the given peer. The message can be
+    /// sent immediately, or placed in a queue to be sent later. The specifics
+    /// are left to the implementor, but this should reasonably function like
+    /// `sendto` on a UDP socket would.
     fn queue_send<X>(&mut self, peer: Sid, data: X)
     where xenc::Value: From<X>;
 
+    /// Sets a timer to fire after the given duration has passed. Ideally, this
+    /// will happen exactly after the specified duration has passed, (so the
+    /// timer fires at `now` plus `at`), but Oxen does not rely on microsecond
+    /// precision for this. (Try to keep it within a few hundred ms though.) The
+    /// caller should invoke `timeout` on the associated `Oxen` when the timer
+    /// fires.
     fn timer_set(&mut self, at: Duration) -> Timer;
 
+    /// Indicates that Oxen is no longer interested in the given timer. While
+    /// it's technically a logic error to invoke `timeout` after a timer has
+    /// been canceled, Oxen is pretty tolerant of this. This is merely a
+    /// courtesy to indicate to the user that the resources associated with the
+    /// timer can be released.
     fn timer_cancel(&mut self, timer: Timer);
 }
 
@@ -122,6 +152,7 @@ struct PendingMessage {
 }
 
 impl Oxen {
+    /// Creates a new `Oxen` identified by the given `Sid`.
     pub fn new<H>(hdlr: &mut H, me: Sid) -> Oxen
     where H: OxenHandler {
         let mut oxen = Oxen {
@@ -156,6 +187,7 @@ impl Oxen {
         oxen
     }
 
+    /// Dumps statistics about `self` as `info!` messages.
     pub fn dump_stats<H>(&self, hdlr: &mut H)
     where H: OxenHandler {
         info!("stats for {}", self.me);
@@ -196,6 +228,13 @@ impl Oxen {
         self.one_inbox.dump_stats();
     }
 
+    /// Called to make Oxen aware of the given peer. This only needs to be
+    /// called once for every peer in the cluster. For example, if a peer
+    /// vanishes, Oxen will still remember that the peer was visible at some
+    /// point and not need to be reminded that the peer exists. However,
+    /// although from the user's perspective Oxen is relatively stateless in
+    /// keeping track of peers, it needs to do some initial setup before the
+    /// protocol can be used correctly, which is the purpose of this function.
     pub fn add_peer<H>(&mut self, hdlr: &mut H, sid: Sid)
     where H: OxenHandler {
         if sid == self.me {
@@ -215,6 +254,9 @@ impl Oxen {
         }));
     }
 
+    /// Called when an XENC value arrives from a peer to be processed by Oxen.
+    /// The callback `cb` is called with any events that result from processing
+    /// of this message.
     pub fn incoming<H, F>(
         &mut self,
         hdlr: &mut H,
@@ -256,6 +298,8 @@ impl Oxen {
         }
     }
 
+    /// Called when a timer fires. The callback `cb` is called with any events
+    /// that result from this timer firing.
     pub fn timeout<H>(&mut self, hdlr: &mut H, timer: Timer)
     where H: OxenHandler {
         if timer == self.lc_timer {
@@ -282,6 +326,8 @@ impl Oxen {
         };
     }
 
+    /// Sends a blob of octets to all peers Oxen is aware of (i.e., that have
+    /// been added with `add_peer`).
     pub fn send_broadcast<H>(&mut self, hdlr: &mut H, data: Vec<u8>)
     where H: OxenHandler {
         let peers: Vec<Sid> = self.peers.iter().cloned().collect();
@@ -301,6 +347,8 @@ impl Oxen {
         }
     }
 
+    /// Sends a blob of octets to a single peer. Oxen must be aware of the peer,
+    /// i.e., it must have been added with `add_peer`.
     pub fn send_one<H>(&mut self, hdlr: &mut H, to: Sid, data: Vec<u8>)
     where H: OxenHandler {
         if to == self.me {

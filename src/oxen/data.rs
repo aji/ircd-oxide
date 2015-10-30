@@ -26,79 +26,112 @@ pub type SeqNum = u32;
 /// Parcels are the basic unit of communication between nodes in an Oxen cluster
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parcel {
+    /// The *keepalive request* field. If provided, the receiving node is
+    /// requested to send a keepalive ok with the given ID.
     pub ka_rq: Option<KeepaliveId>,
+    /// The *keepalive ok* field, sent in response to a keepalive request.
     pub ka_ok: Option<KeepaliveId>,
+    /// The body of the `Parcel`
     pub body: ParcelBody,
 }
 
 /// The body of a `Parcel` can take a handful of forms, captured in this `enum`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParcelBody {
+    /// No body was included with the `Parcel`.
     Missing,
+    /// The body is a `MsgData`
     MsgData(MsgData),
+    /// The body is a `MsgAck`
     MsgAck(MsgAck),
+    /// The body is a `LcGossip`
     LcGossip(LcGossip),
 }
 
 /// A message data (`md`) parcel. Further contains a `MsgDataBody`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgData {
+    /// The `Sid` the data is addressed to.
     pub to: Sid,
+    /// The `Sid` the data originates from.
     pub fr: Sid,
+    /// The ID of the message, used for acknowledgements. If omitted, no
+    /// acknowledgement is requested.
     pub id: Option<MsgId>,
+    /// The body of the message.
     pub body: MsgDataBody,
 }
 
 /// A message acknowledgement (`ma`) parcel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgAck {
+    /// The `Sid` the acknowledgement is addressed to, i.e. the `Sid` that the
+    /// associated message originates from.
     pub to: Sid,
+    /// The `Sid` the acknowledgement originates from, i.e. the `Sid` that the
+    /// associated message data was addressed to.
     pub fr: Sid,
+    /// The `Id` of the message being acknowledged.
     pub id: MsgId,
 }
 
 /// A last contact gossip (`lc`) parcel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LcGossip {
+    /// The rows of the last contact table fragment, keyed by row label.
     pub rows: HashMap<Sid, Vec<Timespec>>,
+    /// The column labels of the last contact table fragment.
     pub cols: Vec<Sid>,
 }
 
 /// The body of a `MsgData` parcel body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MsgDataBody {
+    /// No message data body was included.
     Missing,
+    /// A synchronize (`s`) message.
     MsgSync(MsgSync),
+    /// A finalize (`f`) message.
     MsgFinal(MsgFinal),
+    /// A broadcast (`b`) message.
     MsgBrd(MsgBrd),
+    /// A one-to-one (`1`) message.
     MsgOne(MsgOne),
 }
 
 /// Message data for synchronization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgSync {
+    /// The broadcast sequence number to start with.
     pub brd: SeqNum,
+    /// The one-to-one sequence number to start with.
     pub one: SeqNum,
 }
 
 /// Message data for finalization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MsgFinal {
+    /// The last broadcast sequence number to be sent.
     pub brd: SeqNum,
+    /// The last one-to-one sequence number to be sent.
     pub one: SeqNum,
 }
 
 /// Message data for broadcast messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgBrd {
+    /// The sequence number of this broadcast message.
     pub seq: SeqNum,
+    /// The blob of octets for this broadcast.
     pub data: Vec<u8>,
 }
 
 /// Message data for one-to-one messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsgOne {
+    /// The sequence number of this one-to-one message.
     pub seq: SeqNum,
+    /// The blob of octets for this message.
     pub data: Vec<u8>,
 }
 

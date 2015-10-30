@@ -15,6 +15,10 @@ use std::convert::From;
 pub struct IrcString(String);
 
 impl IrcString {
+    /// Returns the canonical form of this `IrcString`. Canonical forms have the
+    /// same comparison relationship as `IrcString`s (so if the canonical forms
+    /// are equal, then the `IrcString`s they were derived from will be equal),
+    /// but aren't otherwise too useful.
     pub fn canonicalize(&self) -> String {
         self.0.to_lowercase()
     }

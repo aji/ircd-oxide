@@ -4,6 +4,8 @@
 // This file is part of ircd-oxide and is protected under the terms contained in
 // the COPYING file in the project root.
 
+//! XENC is an octet-level serialization format similar to Bencode.
+
 use std::collections::HashMap;
 use std::convert::From;
 use std::io;
@@ -24,10 +26,15 @@ pub type Result<T> = result::Result<T, Error>;
 /// leaves, while `List` and `Dict` may contain other values.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Value {
+    /// An `i16`
     I64(i64),
+    /// A `Timespec`
     Time(Timespec),
+    /// An octet string, as a `Vec<u8>`
     Octets(Vec<u8>),
+    /// A list of values, as a `Vec<Value>`
     List(Vec<Value>),
+    /// A dictionary of values, as a `HashMap<Vec<u8>, Value>`
     Dict(HashMap<Vec<u8>, Value>),
 }
 
@@ -129,6 +136,8 @@ impl<T> From<HashMap<Vec<u8>, T>> for Value where Value: From<T> {
 
 /// A trait for things that can be deserialized from XENC values
 pub trait FromXenc: Sized {
+    /// Called to convert the given XENC value into a `Self`. `Err` is returned
+    /// if a conversion is not possible.
     fn from_xenc(v: Value) -> Result<Self>;
 }
 

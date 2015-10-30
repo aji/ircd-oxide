@@ -116,6 +116,7 @@ pub struct Clocked<T: Clone> {
 }
 
 impl<T: Clone> Clocked<T> {
+    /// Creates a new `Clocked` that will be superseded by all other `Clocked`s.
     pub fn new(data: T) -> Clocked<T> {
         Clocked {
             clock: Clock::neg_infty(),
@@ -123,6 +124,8 @@ impl<T: Clone> Clocked<T> {
         }
     }
 
+    /// Creates a `Clocked` that is tagged with the current time and given
+    /// `Sid`.
     pub fn now(sid: Sid, data: T) -> Clocked<T> {
         Clocked {
             clock: Clock::now(sid),

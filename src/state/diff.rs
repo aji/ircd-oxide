@@ -30,8 +30,12 @@ pub trait Diffable<'r> {
 /// Used to signal how an item has changed between revisions.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Differ<I> {
+    /// An item was added
     Added(I),
+    /// An item was removed
     Removed(I),
+    /// An item was changed. The first element is the old item, and the element
+    /// is the new one.
     Changed(I, I),
 }
 

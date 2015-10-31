@@ -39,7 +39,7 @@ pub trait Observer {
 /// A struct for managing a [`World`](struct.World.html).
 pub struct WorldManager<'obs> {
     world: World,
-    observers: Vec<Box<Observer + 'obs>>,
+    observers: Vec<&'obs mut (Observer + 'obs)>,
 }
 
 impl<'obs> WorldManager<'obs> {
@@ -54,16 +54,16 @@ impl<'obs> WorldManager<'obs> {
     }
 
     /// Adds an `Observer` to the list of observers of this world
-    pub fn observe<O: Observer + 'obs>(&mut self, obs: O) {
-        self.observers.push(Box::new(obs));
+    pub fn observe<O: Observer + 'obs>(&mut self, obs: &'obs mut O) {
+        self.observers.push(obs);
     }
 
-    /// Calls a function to close the given channel, if it exists.
-    pub fn update_channel<F>(&mut self, chanid: Id<Channel>, cb: F)
+    /// Calls a function to modify the given channel, if it exists.
+    pub fn update_channel<F>(&mut self, chanid: &Id<Channel>, cb: F)
     where F: FnOnce(&mut Channel) {
         let old = self.world.clone();
 
-        if let Some(chan) = self.world.channels.get_mut(&chanid) {
+        if let Some(chan) = self.world.channels.get_mut(chanid) {
             cb(chan);
         }
 
@@ -74,5 +74,46 @@ impl<'obs> WorldManager<'obs> {
         for obs in self.observers.iter_mut() {
             obs.world_changed(&old, &self.world);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct CountObserver<'a>(&'a mut u32);
+
+    impl<'a> Observer for CountObserver<'a> {
+        fn world_changed(&mut self, _: &World, _: &World) {
+            *self.0 += 1
+        }
+    }
+
+    #[test]
+    fn observer_bounds_work() {
+        use state::IdGenerator;
+        use util::Sid;
+
+        let mut idgen = IdGenerator::new(Sid::new("123"));
+        let chanid = idgen.next();
+
+        let mut count1 = 0;
+        let mut count2 = 3;
+
+        {
+            let mut obs1 = CountObserver(&mut count1);
+            let mut obs2 = CountObserver(&mut count2);
+
+            let mut mgr = WorldManager::new();
+
+            mgr.observe(&mut obs1);
+            mgr.observe(&mut obs2);
+
+            mgr.update_channel(&chanid, |_| ());
+            mgr.update_channel(&chanid, |_| ());
+        }
+
+        assert!(count1 == 2);
+        assert!(count2 == 5);
     }
 }

@@ -152,3 +152,11 @@ impl<T: Clone> ::std::ops::Deref for Clocked<T> {
         &self.data
     }
 }
+
+impl<T: Clone> ::std::cmp::PartialEq for Clocked<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.clock == other.clock
+    }
+}
+
+impl<T: Clone> ::std::cmp::Eq for Clocked<T> { }

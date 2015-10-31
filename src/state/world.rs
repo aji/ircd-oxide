@@ -9,14 +9,12 @@
 use std::collections::HashMap;
 
 use state::Channel;
-use state::ClaimMap;
 use state::Id;
 
 /// The top level struct that contains all conceptually global state.
 #[derive(Clone)]
 pub struct World {
     channels: HashMap<Id<Channel>, Channel>,
-    channel_names: ClaimMap<Channel, String>,
 }
 
 impl World {
@@ -24,8 +22,12 @@ impl World {
     pub fn new() -> World {
         World {
             channels: HashMap::new(),
-            channel_names: ClaimMap::new(),
         }
+    }
+
+    /// Returns a reference to the channel map
+    pub fn channels(&self) -> &HashMap<Id<Channel>, Channel> {
+        &self.channels
     }
 }
 

@@ -68,6 +68,11 @@ impl ClientManager {
         chan_new: &Channel
     ) {
         println!("channel changed");
+
+        let topic_diff = chan_old.topic.diff(&chan_new.topic);
+        if let Some(Differ::Changed(_, topic)) = topic_diff {
+            println!("new topic: {}", *topic);
+        }
     }
 }
 

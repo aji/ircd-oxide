@@ -15,7 +15,8 @@ use state::StateItem;
 /// An IRC channel.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Channel {
-    topic: Clocked<String>,
+    /// The channel topic, as a timestamped `String`
+    pub topic: Clocked<String>,
     users: HashMap<Id<()>, ChannelUser>,
 }
 

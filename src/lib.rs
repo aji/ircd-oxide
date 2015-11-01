@@ -11,6 +11,7 @@
 
 #![warn(missing_docs)]
 
+extern crate mio;
 extern crate rand;
 extern crate time;
 
@@ -19,6 +20,7 @@ extern crate log;
 
 pub mod irc;
 pub mod oxen;
+pub mod run;
 pub mod state;
 pub mod util;
 pub mod xenc;

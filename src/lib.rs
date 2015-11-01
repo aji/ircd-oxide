@@ -22,5 +22,6 @@ pub mod irc;
 pub mod oxen;
 pub mod run;
 pub mod state;
+pub mod tcp;
 pub mod util;
 pub mod xenc;

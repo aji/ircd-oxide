@@ -32,7 +32,7 @@ pub struct TcpReader {
     sock: Rc<RefCell<TcpStream>>
 }
 
-impl Read for TcpWriter {
+impl Read for TcpReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.sock.borrow_mut().read(buf)
     }

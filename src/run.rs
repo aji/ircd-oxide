@@ -26,6 +26,7 @@ impl<'obs> IRCD<'obs> {
         }
     }
 
+    /// Runs the `IRCD`
     pub fn run(&'obs mut self, ev: &mut mio::EventLoop<IRCD>) {
         self.world.observe(&mut self.clients);
     }

@@ -6,7 +6,9 @@
 
 //! Client protocol handlers
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use state::world;
 use state::Channel;
@@ -19,16 +21,14 @@ use state::World;
 pub struct ClientPool;
 
 /// The structure that holds a pool of clients and responds to events
+#[derive(Clone)]
 pub struct ClientManager {
-    pool: ClientPool
+    pool: Rc<RefCell<ClientPool>>,
 }
 
-impl ClientManager {
-    /// Creates a new `ClientManager` with an empty `ClientPool`
-    pub fn new() -> ClientManager {
-        ClientManager {
-            pool: ClientPool
-        }
+impl ClientPool {
+    fn new() -> ClientPool {
+        ClientPool
     }
 
     fn channels_changed(
@@ -76,8 +76,17 @@ impl ClientManager {
     }
 }
 
+impl ClientManager {
+    /// Creates a new `ClientManager` with an empty `ClientPool`
+    pub fn new() -> ClientManager {
+        ClientManager {
+            pool: Rc::new(RefCell::new(ClientPool::new())),
+        }
+    }
+}
+
 impl world::Observer for ClientManager {
     fn world_changed(&mut self, old: &World, new: &World) {
-        self.channels_changed(old.channels(), new.channels());
+        self.pool.borrow_mut().channels_changed(old.channels(), new.channels());
     }
 }

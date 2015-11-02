@@ -41,7 +41,7 @@ pub trait Observer {
 /// A struct for managing a [`World`](struct.World.html).
 pub struct WorldManager<'obs> {
     world: World,
-    observers: Vec<&'obs mut (Observer + 'obs)>,
+    observers: Vec<Box<Observer + 'obs>>,
 }
 
 impl<'obs> WorldManager<'obs> {
@@ -56,8 +56,8 @@ impl<'obs> WorldManager<'obs> {
     }
 
     /// Adds an `Observer` to the list of observers of this world
-    pub fn observe<O: Observer + 'obs>(&mut self, obs: &'obs mut O) {
-        self.observers.push(obs);
+    pub fn observe<O: Observer + 'obs>(&mut self, obs: O) {
+        self.observers.push(Box::new(obs));
     }
 
     /// Calls a function to modify the given channel, if it exists.
@@ -103,13 +103,13 @@ mod tests {
         let mut count2 = 3;
 
         {
-            let mut obs1 = CountObserver(&mut count1);
-            let mut obs2 = CountObserver(&mut count2);
-
             let mut mgr = WorldManager::new();
 
-            mgr.observe(&mut obs1);
-            mgr.observe(&mut obs2);
+            let obs1 = CountObserver(&mut count1);
+            let obs2 = CountObserver(&mut count2);
+
+            mgr.observe(obs1);
+            mgr.observe(obs2);
 
             mgr.update_channel(&chanid, |_| ());
             mgr.update_channel(&chanid, |_| ());

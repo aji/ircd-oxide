@@ -7,6 +7,7 @@
 //! Logic for handling specifics of the IRC client protocol
 
 pub mod client;
+pub mod message;
 
 use std::cmp;
 use std::convert::From;

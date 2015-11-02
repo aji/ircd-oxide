@@ -630,7 +630,7 @@ impl Oxen {
         }
     }
 
-    fn handle_lc_gossip<H>(&mut self, hdlr: &mut H, data: LcGossip)
+    fn handle_lc_gossip<H>(&mut self, _hdlr: &mut H, data: LcGossip)
     where H: OxenHandler {
         for (from, times) in data.rows.into_iter() {
             for (to, at) in data.cols.iter().zip(times.into_iter()) {

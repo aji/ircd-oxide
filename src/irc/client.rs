@@ -60,17 +60,17 @@ impl ClientPool {
         }
     }
 
-    fn channel_added(&mut self, id: &Id<Channel>, chan: &Channel) {
+    fn channel_added(&mut self, _id: &Id<Channel>, _chan: &Channel) {
         println!("channel added");
     }
 
-    fn channel_removed(&mut self, id: &Id<Channel>, chan: &Channel) {
+    fn channel_removed(&mut self, _id: &Id<Channel>, _chan: &Channel) {
         println!("channel removed");
     }
 
     fn channel_changed(
         &mut self,
-        id: &Id<Channel>,
+        _id: &Id<Channel>,
         chan_old: &Channel,
         chan_new: &Channel
     ) {

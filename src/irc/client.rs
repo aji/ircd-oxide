@@ -137,6 +137,17 @@ pub struct PendingClient {
     linebuf: LineBuffer,
 }
 
+/// An enumeration used to specify how the owning control should act after
+/// `PendingClient` processes some events.
+pub enum PendingClientAction {
+    /// No action should be taken
+    Continue,
+    /// The `PendingClient` should be closed.
+    Close,
+    /// The `PendingClient` should be promoted to a regular `Client`.
+    Promote,
+}
+
 impl PendingClient {
     /// Wraps the mio `TcpStream` as a `PendingClient`
     pub fn new(sock: TcpStream) -> PendingClient {
@@ -157,19 +168,23 @@ impl PendingClient {
         )
     }
 
+    /// Removes the `PendingClient` from the given mio `EventLoop`
+    pub fn deregister<H>(&self, ev: &mut mio::EventLoop<H>)
+    -> io::Result<()> where H: mio::Handler {
+        ev.deregister(&self.sock)
+    }
+
     /// Called to indicate that data is ready on the socket.
-    pub fn ready(&mut self) {
+    pub fn ready(&mut self) -> PendingClientAction {
         let mut buf: [u8; 2048] = unsafe { mem::uninitialized() };
 
         let data = match self.sock.read(&mut buf[..]) {
             Err(e) => {
                 info!("an error occurred when reading: {}", e);
-                return;
+                return PendingClientAction::Continue;
             },
-            Ok(0) => {
-                info!("closed");
-                return;
-            },
+
+            Ok(0) => return PendingClientAction::Close,
             Ok(n) => &buf[..n],
         };
 
@@ -177,5 +192,7 @@ impl PendingClient {
             info!(" -> {}", String::from_utf8_lossy(ln));
             true
         });
+
+        PendingClientAction::Continue
     }
 }

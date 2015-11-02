@@ -15,6 +15,7 @@ use std::net::ToSocketAddrs;
 use irc::client::ClientManager;
 use irc::client::Listener;
 use irc::client::PendingClient;
+use irc::client::PendingClientAction;
 use state::world::WorldManager;
 
 /// The top-level IRC server structure
@@ -27,7 +28,12 @@ pub struct IRCD<'obs> {
 enum TokenData {
     Listener(Listener),
     PendingClient(PendingClient),
-    Client,
+}
+
+enum Action {
+    Continue,
+    ListenerAccept(PendingClient),
+    PendingClient(PendingClientAction),
 }
 
 impl<'obs> IRCD<'obs> {
@@ -76,11 +82,17 @@ impl<'obs> mio::Handler for IRCD<'obs> {
         &mut self,
         ev: &mut mio::EventLoop<IRCD>,
         tk: mio::Token,
-        events: mio::EventSet
+        _events: mio::EventSet
     ) {
         debug!("event becomes ready");
 
-        let new_client = {
+        // This function is turning out to be a big mess, but the basic
+        // structure is pretty straightforward:
+        //
+        //    let action = ...;
+        //    match action { ... }
+
+        let action = {
             let tdata = match self.tokens.get_mut(&tk) {
                 Some(tdata) => tdata,
                 None => {
@@ -94,30 +106,57 @@ impl<'obs> mio::Handler for IRCD<'obs> {
                     debug!("accepting new incoming connection");
 
                     match listener.accept() {
-                        Ok(pending) => {
-                            Some(pending)
-                        },
                         Err(e) => {
                             error!("couldn't accept: {}", e);
-                            None
+                            Action::Continue
                         },
+
+                        Ok(pending) => Action::ListenerAccept(pending),
                     }
                 },
 
                 TokenData::PendingClient(ref mut pending) => {
-                    pending.ready();
-                    None
-                },
-
-                TokenData::Client => {
-                    None
+                    Action::PendingClient(pending.ready())
                 },
             }
         };
 
-        if let Some(pending) = new_client {
-            if let Err(e) = self.add_pending_client(pending, ev) {
-                error!("couldn't add pending client: {}", e);
+        match action {
+            Action::Continue => { },
+
+            Action::ListenerAccept(pending) => {
+                if let Err(e) = self.add_pending_client(pending, ev) {
+                    error!("couldn't add pending client: {}", e);
+                }
+            },
+
+            Action::PendingClient(pca) => match pca {
+                PendingClientAction::Continue => {
+                },
+
+                PendingClientAction::Close => {
+                    match self.tokens.remove(&tk) {
+                        Some(TokenData::PendingClient(pending)) => {
+                            info!("dropping pending client");
+                            if let Err(e) = pending.deregister(ev) {
+                                error!("error when dropping pending \
+                                        client: {}", e);
+                            }
+                        },
+                        Some(tdata) => {
+                            error!("logic error: bad token for \
+                                    pending client close");
+                            self.tokens.insert(tk, tdata);
+                        },
+                        None => {
+                            error!("logic error: invalid token for \
+                                    pending client close");
+                        },
+                    }
+                },
+
+                PendingClientAction::Promote => {
+                },
             }
         }
     }
@@ -160,6 +199,6 @@ impl<'obs> Runner<'obs> {
     /// Runs the `Runner` forever
     pub fn run(&mut self) {
         info!("ircd-oxide starting");
-        self.ev.run(&mut self.ircd);
+        self.ev.run(&mut self.ircd).expect("event loop stopped with error");
     }
 }

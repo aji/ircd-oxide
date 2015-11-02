@@ -17,6 +17,7 @@ use std::mem;
 use std::rc::Rc;
 
 use irc::LineBuffer;
+use irc::Message;
 use state::world;
 use state::Channel;
 use state::Diffable;
@@ -135,6 +136,12 @@ impl Listener {
 pub struct PendingClient {
     sock: TcpStream,
     linebuf: LineBuffer,
+    state: PendingClientState,
+}
+
+struct PendingClientState {
+    nick: Option<()>,
+    user: Option<()>,
 }
 
 /// An enumeration used to specify how the owning control should act after
@@ -154,6 +161,7 @@ impl PendingClient {
         PendingClient {
             sock: sock,
             linebuf: LineBuffer::new(),
+            state: PendingClientState::new(),
         }
     }
 
@@ -188,11 +196,58 @@ impl PendingClient {
             Ok(n) => &buf[..n],
         };
 
+        let state = &mut self.state;
+
         self.linebuf.split(data, |ln| {
-            info!(" -> {}", String::from_utf8_lossy(ln));
-            true
+            let m = match Message::parse(ln) {
+                Ok(m) => m,
+                Err(_) => return true,
+            };
+
+            debug!("(pending) -> {}", String::from_utf8_lossy(ln));
+            debug!("           > {:?}", m);
+
+            state.transition(m);
+            state.finished()
         });
 
-        PendingClientAction::Continue
+        state.action()
+    }
+}
+
+impl PendingClientState {
+    fn new() -> PendingClientState {
+        PendingClientState {
+            nick: None,
+            user: None,
+        }
+    }
+
+    fn finished(&self) -> bool {
+        self.nick.is_some() && self.user.is_some()
+    }
+
+    fn action(&self) -> PendingClientAction {
+        if !self.finished() {
+            return PendingClientAction::Continue;
+        }
+
+        PendingClientAction::Close
+    }
+
+    fn transition(&mut self, m: Message) {
+        match m.verb {
+            b"CAPAB" => info!("sets capabilities"),
+            b"PASS" => info!("sets password"),
+            b"NICK" => {
+                info!("sets nickname");
+                self.nick = Some(());
+            },
+            b"USER" => {
+                info!("sets extra info");
+                self.user = Some(());
+            },
+            _ => info!("unknown command!"),
+        }
     }
 }

@@ -137,8 +137,8 @@ fn message_parse_with_spaces() {
 fn message_parse_dumb_client() {
     assert_eq!(Message {
         verb: b"PING",
-        args: vec![b"this", b"has", b"spaces"],
-    }, Message::parse(b"   PING       this  has :spaces").unwrap());
+        args: vec![b"this", b"has", b"spaces  "],
+    }, Message::parse(b"   PING       this  has :spaces  ").unwrap());
 }
 
 #[test]

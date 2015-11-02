@@ -6,10 +6,12 @@
 
 //! Client protocol handlers
 
+use mio;
 use mio::tcp::TcpListener;
 use mio::tcp::TcpStream;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::io;
 use std::rc::Rc;
 
 use state::world;
@@ -60,7 +62,7 @@ impl ClientPool {
     }
 
     fn channel_removed(&mut self, id: &Id<Channel>, chan: &Channel) {
-        println!("channel added");
+        println!("channel removed");
     }
 
     fn channel_changed(
@@ -104,10 +106,47 @@ impl Listener {
         Listener { sock: sock }
     }
 
+    /// Registers the `Listener` with the given mio `EventLoop`
+    pub fn register<H>(&self, tk: mio::Token, ev: &mut mio::EventLoop<H>)
+    -> io::Result<()> where H: mio::Handler {
+        ev.register_opt(
+            &self.sock,
+            tk,
+            mio::EventSet::readable(),
+            mio::PollOpt::level()
+        )
+    }
+
     /// Accepts a new connection
-    pub fn accept(&mut self) {
-        self.sock.accept()
-            .expect("accept failed!")
-            .expect("accept failed (would block)");
+    pub fn accept(&mut self) -> io::Result<PendingClient> {
+        let sock = {
+            let sock = try!(self.sock.accept());
+            sock.expect("accept failed (would block)")
+        };
+
+        Ok(PendingClient::new(sock))
+    }
+}
+
+/// A client that has connected but not finished registration
+pub struct PendingClient {
+    sock: TcpStream,
+}
+
+impl PendingClient {
+    /// Wraps the mio `TcpStream` as a `PendingClient`
+    pub fn new(sock: TcpStream) -> PendingClient {
+        PendingClient { sock: sock }
+    }
+
+    /// Registers the `PendingClient` with the given mio `EventLoop`
+    pub fn register<H>(&self, tk: mio::Token, ev: &mut mio::EventLoop<H>)
+    -> io::Result<()> where H: mio::Handler {
+        ev.register_opt(
+            &self.sock,
+            tk,
+            mio::EventSet::readable(),
+            mio::PollOpt::level()
+        )
     }
 }

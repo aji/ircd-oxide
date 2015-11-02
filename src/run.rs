@@ -10,11 +10,11 @@ use mio;
 use rand::random;
 use std::collections::HashMap;
 use std::io;
-use std::mem;
 use std::net::ToSocketAddrs;
 
 use irc::client::ClientManager;
 use irc::client::Listener;
+use irc::client::PendingClient;
 use state::world::WorldManager;
 
 /// The top-level IRC server structure
@@ -26,6 +26,7 @@ pub struct IRCD<'obs> {
 
 enum TokenData {
     Listener(Listener),
+    PendingClient(PendingClient),
     Client,
 }
 
@@ -44,12 +45,26 @@ impl<'obs> IRCD<'obs> {
         }
     }
 
-    fn generate_token(&self) -> mio::Token {
-        mio::Token(random())
+    fn add_listener(
+        &mut self,
+        listener: Listener,
+        ev: &mut mio::EventLoop<IRCD>
+    ) -> io::Result<()> {
+        let token = mio::Token(random());
+        try!(listener.register(token, ev));
+        self.tokens.insert(token, TokenData::Listener(listener));
+        Ok(())
     }
 
-    fn add_listener(&mut self, tk: mio::Token, listener: mio::tcp::TcpListener) {
-        self.tokens.insert(tk, TokenData::Listener(Listener::new(listener)));
+    fn add_pending_client(
+        &mut self,
+        pending: PendingClient,
+        ev: &mut mio::EventLoop<IRCD>
+    ) -> io::Result<()> {
+        let token = mio::Token(random());
+        try!(pending.register(token, ev));
+        self.tokens.insert(token, TokenData::PendingClient(pending));
+        Ok(())
     }
 }
 
@@ -65,22 +80,44 @@ impl<'obs> mio::Handler for IRCD<'obs> {
     ) {
         debug!("event becomes ready");
 
-        let tdata = match self.tokens.get_mut(&tk) {
-            Some(tdata) => tdata,
-            None => {
-                error!("mio woke us up with token we don't know about!");
-                return;
+        let new_client = {
+            let tdata = match self.tokens.get_mut(&tk) {
+                Some(tdata) => tdata,
+                None => {
+                    error!("mio woke us up with token we don't know about!");
+                    return;
+                }
+            };
+
+            match *tdata {
+                TokenData::Listener(ref mut listener) => {
+                    debug!("accepting new incoming connection");
+
+                    match listener.accept() {
+                        Ok(pending) => {
+                            Some(pending)
+                        },
+                        Err(e) => {
+                            error!("couldn't accept: {}", e);
+                            None
+                        },
+                    }
+                },
+
+                TokenData::PendingClient(_) => {
+                    None
+                },
+
+                TokenData::Client => {
+                    None
+                },
             }
         };
 
-        match *tdata {
-            TokenData::Listener(ref mut listener) => {
-                debug!("accepting new incoming connection");
-                listener.accept();
-            },
-
-            TokenData::Client => {
-            },
+        if let Some(pending) = new_client {
+            if let Err(e) = self.add_pending_client(pending, ev) {
+                error!("couldn't add pending client: {}", e);
+            }
         }
     }
 }
@@ -116,18 +153,7 @@ impl<'obs> Runner<'obs> {
             try!(mio::tcp::TcpListener::bind(&addr))
         };
 
-        let token = self.ircd.generate_token();
-
-        try!(self.ev.register_opt(
-            &listener,
-            token,
-            mio::EventSet::readable(),
-            mio::PollOpt::level()
-        ));
-
-        self.ircd.add_listener(token, listener);
-
-        Ok(())
+        self.ircd.add_listener(Listener::new(listener), &mut self.ev)
     }
 
     /// Runs the `Runner` forever

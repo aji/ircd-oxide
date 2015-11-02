@@ -5,9 +5,8 @@
 // the COPYING file in the project root.
 
 //! Line buffering.
-
-/// The maximum number of bytes for each line
-pub const LINE_MAX: usize = 2048;
+//!
+//! *TODO*: Implement/enforce limit on line lengths.
 
 /// A line buffer.
 pub struct LineBuffer {
@@ -26,8 +25,6 @@ impl LineBuffer {
     /// its internal buffer to be processed later.
     pub fn split<F>(&mut self, data: &[u8], mut cb: F)
     where F: FnMut(&[u8]) -> bool {
-        assert!(data.len() < LINE_MAX);
-
         let bytes = {
             let mut bytes = self.extra.clone();
             bytes.extend(data.iter().cloned().filter(|c| *c != b'\r'));

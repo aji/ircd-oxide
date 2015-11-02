@@ -13,6 +13,8 @@ pub mod message;
 use std::cmp;
 use std::convert::From;
 
+pub use self::linebuf::LineBuffer;
+
 /// An `IrcString` is a wrapper around a standard Rust `String` that provides
 /// extra functionality for comparison and canonicalization based on the
 /// particular casemapping (ASCII, RFC 1459, etc.) in use.

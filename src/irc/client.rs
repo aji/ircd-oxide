@@ -12,8 +12,11 @@ use mio::tcp::TcpStream;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
+use std::io::prelude::*;
+use std::mem;
 use std::rc::Rc;
 
+use irc::LineBuffer;
 use state::world;
 use state::Channel;
 use state::Diffable;
@@ -131,12 +134,16 @@ impl Listener {
 /// A client that has connected but not finished registration
 pub struct PendingClient {
     sock: TcpStream,
+    linebuf: LineBuffer,
 }
 
 impl PendingClient {
     /// Wraps the mio `TcpStream` as a `PendingClient`
     pub fn new(sock: TcpStream) -> PendingClient {
-        PendingClient { sock: sock }
+        PendingClient {
+            sock: sock,
+            linebuf: LineBuffer::new(),
+        }
     }
 
     /// Registers the `PendingClient` with the given mio `EventLoop`
@@ -148,5 +155,27 @@ impl PendingClient {
             mio::EventSet::readable(),
             mio::PollOpt::level()
         )
+    }
+
+    /// Called to indicate that data is ready on the socket.
+    pub fn ready(&mut self) {
+        let mut buf: [u8; 2048] = unsafe { mem::uninitialized() };
+
+        let data = match self.sock.read(&mut buf[..]) {
+            Err(e) => {
+                info!("an error occurred when reading: {}", e);
+                return;
+            },
+            Ok(0) => {
+                info!("closed");
+                return;
+            },
+            Ok(n) => &buf[..n],
+        };
+
+        self.linebuf.split(data, |ln| {
+            info!(" -> {}", String::from_utf8_lossy(ln));
+            true
+        });
     }
 }

@@ -104,7 +104,8 @@ impl<'obs> mio::Handler for IRCD<'obs> {
                     }
                 },
 
-                TokenData::PendingClient(_) => {
+                TokenData::PendingClient(ref mut pending) => {
+                    pending.ready();
                     None
                 },
 

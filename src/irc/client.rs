@@ -6,6 +6,8 @@
 
 //! Client protocol handlers
 
+use mio::tcp::TcpListener;
+use mio::tcp::TcpStream;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -88,5 +90,24 @@ impl ClientManager {
 impl world::Observer for ClientManager {
     fn world_changed(&mut self, old: &World, new: &World) {
         self.pool.borrow_mut().channels_changed(old.channels(), new.channels());
+    }
+}
+
+/// A listener that can spawn new TCP connections
+pub struct Listener {
+    sock: TcpListener,
+}
+
+impl Listener {
+    /// Wraps the mio `TcpListener` as a `Listener`
+    pub fn new(sock: TcpListener) -> Listener {
+        Listener { sock: sock }
+    }
+
+    /// Accepts a new connection
+    pub fn accept(&mut self) {
+        self.sock.accept()
+            .expect("accept failed!")
+            .expect("accept failed (would block)");
     }
 }

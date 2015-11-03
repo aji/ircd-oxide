@@ -182,23 +182,41 @@ impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
     }
 }
 
-/// A map of claims
+/// A map of claims.
 #[derive(Clone)]
 pub struct ClaimMap<Owner: 'static, Over: 'static + Eq + Hash> {
-    map: HashMap<Over, Claim<Owner, Over>>,
+    for_over: HashMap<Over, Claim<Owner, Over>>,
+    for_owner: HashMap<Id<Owner>, Claim<Owner, Over>>,
 }
 
 impl<Owner: 'static, Over: 'static + Eq + Hash> ClaimMap<Owner, Over> {
     /// Creates an empty claim map.
     pub fn new() -> ClaimMap<Owner, Over> {
         ClaimMap {
-            map: HashMap::new()
+            for_over: HashMap::new(),
+            for_owner: HashMap::new(),
         }
     }
 
     /// Returns `true` if the given object has a valid claim on it.
     pub fn is_claimed(&self, k: &Over) -> bool {
-        self.map.get(k).map(|cl| cl.is_valid()).unwrap_or(false)
+        self.for_over.get(k).map(|cl| cl.is_valid()).unwrap_or(false)
+    }
+
+    /// Returns `true` if the given owner has a claim.
+    pub fn has_claim(&self, k: &Id<Owner>) -> bool {
+        self.for_owner.get(k).map(|cl| cl.is_valid()).unwrap_or(false)
+    }
+
+    /// Fetches the owner of the given claim, if the claim is valid.
+    pub fn owner(&self, k: &Over) -> Option<&Id<Owner>> {
+        self.for_over.get(k).and_then(|cl| {
+            if cl.is_valid() {
+                cl.owner.as_ref()
+            } else {
+                None
+            }
+        })
     }
 }
 

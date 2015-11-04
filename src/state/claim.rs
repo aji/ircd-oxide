@@ -148,6 +148,11 @@ impl<Owner: 'static, Over: 'static> Claim<Owner, Over> {
             }
         }
     }
+
+    /// Expires the given claim
+    pub fn unclaim(&mut self, me: Sid) {
+        self.expired = Clock::now(me);
+    }
 }
 
 impl<Owner: 'static, Over: 'static> PartialEq for Claim<Owner, Over> {
@@ -208,13 +213,65 @@ impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
 /// weak reference into a `ClaimMap`. The `ClaimMap` is the true state item.  As
 /// a result, `ClaimRef` is completely opaque and its meaning must be derived
 /// with the help of a matching `ClaimMap`.
+///
+/// See the [`ClaimMap`](struct.ClaimMap.html) documentation for more
+/// information.
 #[derive(Clone)]
 pub struct ClaimRef<Owner: 'static, Over: 'static> {
     id: Id<Owner>,
     of: Rc<Over>
 }
 
-/// A map of claims.
+/// A map of claims. In general, an owner (`Owner`) may have claims to multiple
+/// objects (`Over`), but each object can only have one owner. Individual claims
+/// are represented with a `ClaimRef`, rather than a `Claim`. A `ClaimRef` may
+/// be checked across different `ClaimMap`s, which is useful for evaluating how
+/// a claim has changed between `ClaimMap`s.
+///
+/// # Example
+///
+/// The following example shows how a `ClaimMap` might be used to manage claims.
+/// The `nick` that is created is a [`ClaimRef`](struct.ClaimRef.html), and
+/// lives independently of the `ClaimMap` it's derived from.
+///
+/// ```rust
+/// # use ircd::util::Sid;
+/// # use ircd::state::{ClaimMap, Id, IdGenerator};
+/// #
+/// # let me = Sid::new("123");
+/// # let mut idgen: IdGenerator<()> = IdGenerator::new(me.clone());
+/// # let userid = idgen.next();
+/// # let otheruser = idgen.next();
+/// # let name = "aji".to_owned();
+/// #
+/// // create an empty map of claims
+/// let mut nicknames = ClaimMap::new();
+///
+/// // claim a nickname
+/// let claim = nicknames.claim(me.clone(), userid.clone(), name.clone()).unwrap();
+///
+/// // another claim on this nickname will fail
+/// assert!(nicknames.claim(me.clone(), otheruser.clone(), name.clone()).is_none());
+///
+/// // but we can always make the same claim for the current owner
+/// assert!(nicknames.claim(me.clone(), userid.clone(), name.clone()).is_some());
+///
+/// // validate the claim
+/// assert!(nicknames.is_valid(&claim));
+/// assert_eq!(Some(&name), nicknames.over(&claim));
+///
+/// // validate the claim, then drop it
+/// if let Some(name) = nicknames.over(&claim) {
+///     nicknames.unclaim(me.clone(), name);
+/// }
+///
+/// // the claim should now be invalid
+/// assert!(!nicknames.is_valid(&claim));
+/// assert_eq!(None, nicknames.over(&claim));
+///
+/// // and our other user can now make a claim
+/// assert!(nicknames.claim(me.clone(), otheruser.clone(), name.clone()).is_some());
+/// ```
 #[derive(Clone)]
 pub struct ClaimMap<Owner: 'static, Over: 'static + Eq + Hash> {
     claims: HashMap<Rc<Over>, Claim<Owner, Over>>,
@@ -258,6 +315,13 @@ impl<Owner: 'static, Over: 'static + Eq + Hash> ClaimMap<Owner, Over> {
             Some(rf)
         } else {
             None
+        }
+    }
+
+    /// Expires the claim over the given object.
+    pub fn unclaim(&mut self, me: Sid, of: &Over) {
+        if let Some(cl) = self.claims.get_mut(of) {
+            cl.unclaim(me);
         }
     }
 

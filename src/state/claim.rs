@@ -41,7 +41,6 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::hash::Hash;
 use std::rc::Rc;
-use std::rc::Weak;
 
 use state::diff;
 use state::Clock;
@@ -204,10 +203,15 @@ impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
 
 /// A weak reference to a claim. This would be stored with the owner and used to
 /// verify the owner's claim against a `ClaimMap` in the future.
+///
+/// `ClaimRef` does not implement `StateItem` as it is merely, conceptually, a
+/// weak reference into a `ClaimMap`. The `ClaimMap` is the true state item.  As
+/// a result, `ClaimRef` is completely opaque and its meaning must be derived
+/// with the help of a matching `ClaimMap`.
 #[derive(Clone)]
 pub struct ClaimRef<Owner: 'static, Over: 'static> {
     id: Id<Owner>,
-    of: Weak<Over>
+    of: Rc<Over>
 }
 
 /// A map of claims.
@@ -230,7 +234,8 @@ impl<Owner: 'static, Over: 'static + Eq + Hash> ClaimMap<Owner, Over> {
     }
 
     /// Fetches the owner of the given claim, if the claim is valid.
-    pub fn owner(&self, k: &Over) -> Option<&Id<Owner>> {
+    pub fn owner<B>(&self, k: &B) -> Option<&Id<Owner>>
+    where Rc<Over>: ::std::borrow::Borrow<B>, B: Hash + Eq {
         self.claims.get(k).and_then(|cl| {
             if cl.is_valid() {
                 cl.owner.as_ref()
@@ -246,7 +251,7 @@ impl<Owner: 'static, Over: 'static + Eq + Hash> ClaimMap<Owner, Over> {
     -> Option<ClaimRef<Owner, Over>> {
         let of = Rc::new(of);
 
-        let rf = ClaimRef { id: id.clone(), of: Rc::downgrade(&of) };
+        let rf = ClaimRef { id: id.clone(), of: of.clone() };
         let cl = self.claims.entry(of).or_insert_with(|| Claim::empty());
 
         if cl.claim(me, id) {
@@ -257,11 +262,19 @@ impl<Owner: 'static, Over: 'static + Eq + Hash> ClaimMap<Owner, Over> {
     }
 
     /// Determines if the claim reference is valid.
-    pub fn is_valid(&self, rf: ClaimRef<Owner, Over>) -> bool {
-        rf.of.upgrade()
-            .and_then(|of| self.owner(&*of))
+    pub fn is_valid(&self, rf: &ClaimRef<Owner, Over>) -> bool {
+        self.owner(&rf.of)
             .map(|id| *id == rf.id)
             .unwrap_or(false)
+    }
+
+    /// Fetches a reference to the object associated with the given `ClaimRef`,
+    /// if the claim exists and is valid.
+    pub fn over<'c>(&self, rf: &'c ClaimRef<Owner, Over>) -> Option<&'c Over> {
+        match self.owner(&rf.of) {
+            Some(id) if *id == rf.id => Some(&*rf.of),
+            _ => None
+        }
     }
 }
 

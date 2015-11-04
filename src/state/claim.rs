@@ -230,9 +230,10 @@ pub struct ClaimRef<Owner: 'static, Over: 'static> {
 ///
 /// # Example
 ///
-/// The following example shows how a `ClaimMap` might be used to manage claims.
-/// The `nick` that is created is a [`ClaimRef`](struct.ClaimRef.html), and
-/// lives independently of the `ClaimMap` it's derived from.
+/// The following example shows how a `ClaimMap` might be used to manage claims
+/// to nicknames.  The `claim` that is created is a
+/// [`ClaimRef`](struct.ClaimRef.html), and lives independently of the
+/// `ClaimMap` it's derived from.
 ///
 /// ```rust
 /// # use ircd::util::Sid;

@@ -40,11 +40,14 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::hash::Hash;
+use std::rc::Rc;
+use std::rc::Weak;
 
 use state::diff;
 use state::Clock;
 use state::Id;
 use state::StateItem;
+use util::Sid;
 
 /// A claim object.
 ///
@@ -129,6 +132,23 @@ impl<Owner: 'static, Over: 'static> Claim<Owner, Over> {
     pub fn is_valid(&self) -> bool {
         self.claimed > self.expired
     }
+
+    /// Attempts to take the claim for the given owner. Returns true if the user
+    /// already holds the claim, or if the claim was able to be replaced.
+    pub fn claim(&mut self, me: Sid, id: Id<Owner>) -> bool {
+        if Some(&id) == self.owner.as_ref() {
+            true
+        } else {
+            let now = Clock::now(me);
+            if self.is_valid() && self.claimed < now {
+                false
+            } else {
+                self.claimed = now;
+                self.owner = Some(id);
+                true
+            }
+        }
+    }
 }
 
 impl<Owner: 'static, Over: 'static> PartialEq for Claim<Owner, Over> {
@@ -182,41 +202,66 @@ impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
     }
 }
 
+/// A weak reference to a claim. This would be stored with the owner and used to
+/// verify the owner's claim against a `ClaimMap` in the future.
+#[derive(Clone)]
+pub struct ClaimRef<Owner: 'static, Over: 'static> {
+    id: Id<Owner>,
+    of: Weak<Over>
+}
+
 /// A map of claims.
 #[derive(Clone)]
 pub struct ClaimMap<Owner: 'static, Over: 'static + Eq + Hash> {
-    for_over: HashMap<Over, Claim<Owner, Over>>,
-    for_owner: HashMap<Id<Owner>, Claim<Owner, Over>>,
+    claims: HashMap<Rc<Over>, Claim<Owner, Over>>,
 }
 
 impl<Owner: 'static, Over: 'static + Eq + Hash> ClaimMap<Owner, Over> {
     /// Creates an empty claim map.
     pub fn new() -> ClaimMap<Owner, Over> {
         ClaimMap {
-            for_over: HashMap::new(),
-            for_owner: HashMap::new(),
+            claims: HashMap::new(),
         }
     }
 
     /// Returns `true` if the given object has a valid claim on it.
     pub fn is_claimed(&self, k: &Over) -> bool {
-        self.for_over.get(k).map(|cl| cl.is_valid()).unwrap_or(false)
-    }
-
-    /// Returns `true` if the given owner has a claim.
-    pub fn has_claim(&self, k: &Id<Owner>) -> bool {
-        self.for_owner.get(k).map(|cl| cl.is_valid()).unwrap_or(false)
+        self.claims.get(k).map(|cl| cl.is_valid()).unwrap_or(false)
     }
 
     /// Fetches the owner of the given claim, if the claim is valid.
     pub fn owner(&self, k: &Over) -> Option<&Id<Owner>> {
-        self.for_over.get(k).and_then(|cl| {
+        self.claims.get(k).and_then(|cl| {
             if cl.is_valid() {
                 cl.owner.as_ref()
             } else {
                 None
             }
         })
+    }
+
+    /// Attempts to claim the object for the given owner, if no valid claim
+    /// exists.
+    pub fn claim(&mut self, me: Sid, id: Id<Owner>, of: Over)
+    -> Option<ClaimRef<Owner, Over>> {
+        let of = Rc::new(of);
+
+        let rf = ClaimRef { id: id.clone(), of: Rc::downgrade(&of) };
+        let cl = self.claims.entry(of).or_insert_with(|| Claim::empty());
+
+        if cl.claim(me, id) {
+            Some(rf)
+        } else {
+            None
+        }
+    }
+
+    /// Determines if the claim reference is valid.
+    pub fn is_valid(&self, rf: ClaimRef<Owner, Over>) -> bool {
+        rf.of.upgrade()
+            .and_then(|of| self.owner(&*of))
+            .map(|id| *id == rf.id)
+            .unwrap_or(false)
     }
 }
 

@@ -18,6 +18,9 @@ extern crate time;
 #[macro_use]
 extern crate log;
 
+#[macro_use]
+mod macros;
+
 pub mod irc;
 pub mod oxen;
 pub mod run;

@@ -2,3 +2,4 @@ target
 *.swp
 *~
 manual/_book
+weechat/

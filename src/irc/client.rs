@@ -16,6 +16,7 @@ use std::io::prelude::*;
 use std::mem;
 use std::rc::Rc;
 
+use irc::IrcWriter;
 use irc::LineBuffer;
 use irc::Message;
 use state::world;
@@ -196,7 +197,10 @@ impl PendingClient {
             Ok(n) => &buf[..n],
         };
 
+        // this 'hack' needed because borrowck can't split borrows across a
+        // closure boundary.
         let state = &mut self.state;
+        let sock = &mut self.sock;
 
         self.linebuf.split(data, |ln| {
             let m = match Message::parse(ln) {
@@ -207,7 +211,7 @@ impl PendingClient {
             debug!("(pending) -> {}", String::from_utf8_lossy(ln));
             debug!("           > {:?}", m);
 
-            state.transition(m);
+            state.transition(m, sock);
             state.finished()
         });
 
@@ -235,16 +239,18 @@ impl PendingClientState {
         PendingClientAction::Close
     }
 
-    fn transition(&mut self, m: Message) {
+    fn transition(&mut self, m: Message, sock: &mut TcpStream) {
         match m.verb {
-            b"CAPAB" => info!("sets capabilities"),
+            b"CAP" => info!("sets capabilities"),
             b"PASS" => info!("sets password"),
             b"NICK" => {
                 info!("sets nickname");
+                irc!(sock, "NOTICE", ":got your nickname");
                 self.nick = Some(());
             },
             b"USER" => {
                 info!("sets extra info");
+                irc!(sock, "NOTICE", ":got your ident and gecos");
                 self.user = Some(());
             },
             _ => info!("unknown command!"),

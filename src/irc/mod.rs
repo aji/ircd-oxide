@@ -16,6 +16,7 @@ use std::convert::From;
 
 pub use self::linebuf::LineBuffer;
 pub use self::message::Message;
+pub use self::output::IrcWriter;
 
 /// An `IrcString` is a wrapper around a standard Rust `String` that provides
 /// extra functionality for comparison and canonicalization based on the

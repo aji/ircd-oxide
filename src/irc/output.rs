@@ -18,15 +18,6 @@ pub trait IrcWriter {
     where V: AsRef<[u8]>;
 }
 
-/// Writes the IRC line to the given `IrcWriter`. Invokes `format_args!`
-macro_rules! irc {
-    ($irc:expr, $verb:expr, $($args:tt)*) => {
-        $crate::irc::output::IrcWriter::irc(
-            $irc, &$verb, format_args!($($args)*)
-        )
-    }
-}
-
 impl<W> IrcWriter for W where W: io::Write {
     fn irc<'a, V>(&mut self, verb: &V, args: Arguments<'a>) -> io::Result<()>
     where V: AsRef<[u8]> {

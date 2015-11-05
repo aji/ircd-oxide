@@ -24,8 +24,8 @@ use std::collections::VecDeque;
 use time::Duration;
 use time::Timespec;
 
-use util::Sid;
-use util::Table;
+use common::Sid;
+use common::Table;
 
 // timestamp representing negative infinity
 const NEG_INFTY: Timespec = Timespec { sec: 0, nsec: 0 };

@@ -46,7 +46,7 @@ use state::diff;
 use state::Clock;
 use state::Id;
 use state::StateItem;
-use util::Sid;
+use common::Sid;
 
 /// A claim object.
 ///
@@ -236,7 +236,7 @@ pub struct ClaimRef<Owner: 'static, Over: 'static> {
 /// `ClaimMap` it's derived from.
 ///
 /// ```rust
-/// # use ircd::util::Sid;
+/// # use ircd::common::Sid;
 /// # use ircd::state::{ClaimMap, Id, IdGenerator};
 /// #
 /// # let me = Sid::new("123");
@@ -373,7 +373,7 @@ fn assert_claim_merge<Owner: 'static>(
 #[test]
 fn test_claim_merge() {
     use state::IdGenerator;
-    use util::Sid;
+    use common::Sid;
 
     let mut idgen: IdGenerator<()> = IdGenerator::new(Sid::identity());
 

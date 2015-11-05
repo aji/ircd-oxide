@@ -21,9 +21,9 @@ extern crate log;
 #[macro_use]
 mod macros;
 
+pub mod common;
 pub mod irc;
 pub mod oxen;
 pub mod run;
 pub mod state;
-pub mod util;
 pub mod xenc;

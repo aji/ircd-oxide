@@ -1,4 +1,4 @@
-// util/sid.rs -- server ID type, used in several places
+// common/sid.rs -- server ID type, used in several places
 // Copyright (C) 2015 Alex Iadicicco <http://ajitek.net>
 //
 // This file is part of ircd-oxide and is protected under the terms contained in

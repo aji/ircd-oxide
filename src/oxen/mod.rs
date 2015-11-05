@@ -4,7 +4,7 @@
 // This file is part of ircd-oxide and is protected under the terms contained in
 // the COPYING file in the project root.
 
-//! Oxen is the server-to-server protocol.
+//! Oxen is the cluster membership and messaging protocol.
 //!
 //! Oxen provides reliable in-order delivered once messaging, and reliable
 //! out-of-order delivered at-least-once messaging. The in-order delivered once

@@ -23,7 +23,7 @@ use std::fmt;
 use time;
 
 use state::StateItem;
-use util::Sid;
+use common::Sid;
 
 /// A basic clock implementation. Ties on timestamps are resolved by using the
 /// `sid` field.

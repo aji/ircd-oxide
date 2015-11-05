@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::convert::From;
 use time::Timespec;
 
-use util::Sid;
+use common::Sid;
 use xenc;
 use xenc::FromXenc;
 

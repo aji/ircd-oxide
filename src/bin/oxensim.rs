@@ -20,7 +20,7 @@ use std::str::from_utf8_unchecked;
 use std::sync::{Arc, Mutex};
 use time::{Duration, Timespec, get_time};
 
-use ircd::util::{Sid, Table};
+use ircd::common::{Sid, Table};
 use ircd::oxen::{Oxen, OxenEvent, OxenHandler, Timer};
 use ircd::xenc;
 

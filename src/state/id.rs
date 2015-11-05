@@ -13,7 +13,7 @@ use std::hash;
 use std::hash::Hash;
 use std::marker::PhantomData;
 
-use util::Sid;
+use common::Sid;
 
 // Using PhantomData like we do in this module allows us to construct distinct
 // types for some arbitrary type we call the "namespace" of the Id while still

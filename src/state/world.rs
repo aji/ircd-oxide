@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn observer_bounds_work() {
         use state::IdGenerator;
-        use util::Sid;
+        use common::Sid;
 
         let mut idgen = IdGenerator::new(Sid::new("123"));
         let chanid = idgen.next();

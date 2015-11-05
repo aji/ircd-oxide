@@ -59,7 +59,7 @@ use time::{Duration, Timespec};
 
 use oxen::data::*;
 use oxen::lc::LastContact;
-use util::Sid;
+use common::Sid;
 use xenc;
 use xenc::FromXenc;
 

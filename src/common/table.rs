@@ -1,4 +1,4 @@
-// util/table.rs -- a generic table type
+// common/table.rs -- a generic table type
 // Copyright (C) 2015 Alex Iadicicco
 //
 // This file is part of ircd-oxide and is protected under the terms contained in

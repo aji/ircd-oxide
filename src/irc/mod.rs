@@ -9,6 +9,7 @@
 pub mod client;
 pub mod linebuf;
 pub mod message;
+pub mod output;
 
 use std::cmp;
 use std::convert::From;

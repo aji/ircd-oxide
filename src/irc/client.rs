@@ -243,7 +243,7 @@ impl PendingClientState {
     }
 
     fn action(&self) -> PendingClientAction {
-        if self.finished() {
+        if !self.finished() {
             return PendingClientAction::Continue;
         }
 

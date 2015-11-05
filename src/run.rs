@@ -134,6 +134,7 @@ impl<'obs> mio::Handler for IRCD<'obs> {
                 PendingClientAction::Continue => {
                 },
 
+                PendingClientAction::Error |
                 PendingClientAction::Close => {
                     match self.tokens.remove(&tk) {
                         Some(TokenData::PendingClient(pending)) => {

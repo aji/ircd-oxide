@@ -149,6 +149,9 @@ struct PendingClientState {
 pub enum PendingClientAction {
     /// No action should be taken
     Continue,
+    /// An error has occurred and the `PendingClient` should be dropped
+    /// immediately.
+    Error,
     /// The `PendingClient` should be closed.
     Close,
     /// The `PendingClient` should be promoted to a regular `Client`.
@@ -189,7 +192,7 @@ impl PendingClient {
         let data = match self.sock.read(&mut buf[..]) {
             Err(e) => {
                 info!("an error occurred when reading: {}", e);
-                return PendingClientAction::Continue;
+                return PendingClientAction::Error;
             },
 
             Ok(0) => return PendingClientAction::Close,
@@ -201,7 +204,7 @@ impl PendingClient {
         let state = &mut self.state;
         let sock = &mut self.sock;
 
-        self.linebuf.split(data, |ln| {
+        let err = self.linebuf.split(data, |ln| {
             let m = match Message::parse(ln) {
                 Ok(m) => m,
                 Err(_) => return None,
@@ -210,11 +213,20 @@ impl PendingClient {
             debug!("(pending) -> {}", String::from_utf8_lossy(ln));
             debug!("           > {:?}", m);
 
-            state.transition(m, sock);
-            state.finished()
+            if let Err(e) = state.transition(m, sock) {
+                Some(Err(e))
+            } else if state.finished() {
+                Some(Ok(()))
+            } else {
+                None
+            }
         });
 
-        state.action()
+        if let Some(Err(_)) = err {
+            PendingClientAction::Error
+        } else {
+            state.action()
+        }
     }
 }
 
@@ -226,37 +238,35 @@ impl PendingClientState {
         }
     }
 
-    fn finished(&self) -> Option<()> {
-        if self.nick.is_some() && self.user.is_some() {
-            Some(())
-        } else {
-            None
-        }
+    fn finished(&self) -> bool {
+        self.nick.is_some() && self.user.is_some()
     }
 
     fn action(&self) -> PendingClientAction {
-        if self.finished().is_none() {
+        if self.finished() {
             return PendingClientAction::Continue;
         }
 
         PendingClientAction::Close
     }
 
-    fn transition(&mut self, m: Message, sock: &mut TcpStream) {
+    fn transition(&mut self, m: Message, sock: &mut TcpStream) -> io::Result<()> {
         match m.verb {
             b"CAP" => info!("sets capabilities"),
             b"PASS" => info!("sets password"),
             b"NICK" => {
                 info!("sets nickname");
-                irc!(sock, "NOTICE", ":got your nickname");
+                try!(irc!(sock, "NOTICE", ":got your nickname"));
                 self.nick = Some(());
             },
             b"USER" => {
                 info!("sets extra info");
-                irc!(sock, "NOTICE", ":got your ident and gecos");
+                try!(irc!(sock, "NOTICE", ":got your ident and gecos"));
                 self.user = Some(());
             },
             _ => info!("unknown command!"),
         }
+
+        Ok(())
     }
 }

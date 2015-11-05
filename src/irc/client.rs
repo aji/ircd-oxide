@@ -16,7 +16,6 @@ use std::io::prelude::*;
 use std::mem;
 use std::rc::Rc;
 
-use irc::IrcWriter;
 use irc::LineBuffer;
 use irc::Message;
 use state::world;
@@ -205,7 +204,7 @@ impl PendingClient {
         self.linebuf.split(data, |ln| {
             let m = match Message::parse(ln) {
                 Ok(m) => m,
-                Err(_) => return true,
+                Err(_) => return None,
             };
 
             debug!("(pending) -> {}", String::from_utf8_lossy(ln));
@@ -227,12 +226,16 @@ impl PendingClientState {
         }
     }
 
-    fn finished(&self) -> bool {
-        self.nick.is_some() && self.user.is_some()
+    fn finished(&self) -> Option<()> {
+        if self.nick.is_some() && self.user.is_some() {
+            Some(())
+        } else {
+            None
+        }
     }
 
     fn action(&self) -> PendingClientAction {
-        if !self.finished() {
+        if self.finished().is_none() {
             return PendingClientAction::Continue;
         }
 

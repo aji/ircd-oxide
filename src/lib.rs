@@ -16,6 +16,8 @@ extern crate rand;
 extern crate time;
 
 #[macro_use]
+extern crate bitflags;
+#[macro_use]
 extern crate log;
 
 #[macro_use]

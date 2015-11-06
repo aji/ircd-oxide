@@ -4,6 +4,7 @@ version = "0.0.1"
 authors = ["Alex Iadicicco <alex@ajitek.net>"]
 
 [dependencies]
+bitflags = "*"
 log = "*"
 mio = "*"
 rand = "*"

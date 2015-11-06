@@ -6,6 +6,7 @@
 
 //! Logic for handling specifics of the IRC client protocol
 
+pub mod cap;
 pub mod client;
 pub mod linebuf;
 pub mod message;

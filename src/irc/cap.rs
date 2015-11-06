@@ -49,6 +49,12 @@ impl ClientCaps {
         }
     }
 
+    /// Modifies `self` in-place to contain the union of capabilities in `self`
+    /// and `other`.
+    pub fn add(&mut self, other: &ClientCaps) {
+        self.caps = self.caps | other.caps;
+    }
+
     /// Creates a new client capability set that includes both the capabilities
     /// in this set and `other`.
     pub fn with(&self, other: &ClientCaps) -> ClientCaps {

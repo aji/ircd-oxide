@@ -6,6 +6,14 @@
 
 //! Client capabilities
 
+// THINGS TO UPDATE WHEN ADDING A NEW CAPABILITY: (this is a small file, but
+// adding caps is a non-automatic process that tests can't really catch):
+//
+//   - The constants in `Caps`
+//   - The functions on `ClientCaps`
+//   - The `FromStr` impl (which `of` uses)
+//   - `worthless_test`
+
 use std::str::FromStr;
 
 #[allow(dead_code)]

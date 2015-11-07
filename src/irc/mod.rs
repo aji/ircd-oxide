@@ -10,14 +10,13 @@ pub mod cap;
 pub mod client;
 pub mod linebuf;
 pub mod message;
-pub mod output;
 
 use std::cmp;
 use std::convert::From;
 
+pub use self::cap::ClientCaps;
 pub use self::linebuf::LineBuffer;
 pub use self::message::Message;
-pub use self::output::IrcWriter;
 
 /// An `IrcString` is a wrapper around a standard Rust `String` that provides
 /// extra functionality for comparison and canonicalization based on the

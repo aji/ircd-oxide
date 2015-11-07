@@ -6,11 +6,32 @@
 
 //! Macros
 
-/// Writes the IRC line to the given `IrcWriter`. Invokes `format_args!`
 macro_rules! irc {
-    ($irc:expr, $verb:expr, $($args:tt)*) => {
-        $crate::irc::output::IrcWriter::irc(
-            $irc, &$verb, format_args!($($args)*)
+    ($writer:expr,) => {
+        ::std::io::Write::write($writer, b"\r\n")
+    };
+
+    ($writer:expr, $arg:expr,) => {
+        ::std::io::Write::write(
+            $writer,
+            ::std::convert::AsRef::<[u8]>::as_ref(&$arg)
         )
+    };
+
+    ($writer:expr, $arg:expr) => {
+        match irc!($writer, $arg,) {
+            Err(e) => Err(e),
+            Ok(_) => irc!($writer,)
+        }
+    };
+
+    ($writer:expr, $arg:expr, $($args:tt)*) => {
+        match irc!($writer, $arg,) {
+            Err(e) => Err(e),
+            Ok(_) => match ::std::io::Write::write($writer, b" ") {
+                Err(e) => Err(e),
+                Ok(_) => irc!($writer, $($args)*),
+            }
+        }
     }
 }

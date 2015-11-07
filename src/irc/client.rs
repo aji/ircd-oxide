@@ -16,6 +16,7 @@ use std::io::prelude::*;
 use std::mem;
 use std::rc::Rc;
 
+use irc::ClientCaps;
 use irc::LineBuffer;
 use irc::Message;
 use state::world;
@@ -140,6 +141,8 @@ pub struct PendingClient {
 }
 
 struct PendingClientState {
+    caps: ClientCaps,
+    negotiating: bool,
     nick: Option<()>,
     user: Option<()>,
 }
@@ -233,13 +236,15 @@ impl PendingClient {
 impl PendingClientState {
     fn new() -> PendingClientState {
         PendingClientState {
+            caps: ClientCaps::empty(),
+            negotiating: false,
             nick: None,
             user: None,
         }
     }
 
     fn finished(&self) -> bool {
-        self.nick.is_some() && self.user.is_some()
+        self.nick.is_some() && self.user.is_some() && !self.negotiating
     }
 
     fn action(&self) -> PendingClientAction {
@@ -252,18 +257,43 @@ impl PendingClientState {
 
     fn transition(&mut self, m: Message, sock: &mut TcpStream) -> io::Result<()> {
         match m.verb {
-            b"CAP" => info!("sets capabilities"),
+            b"CAP" => match m.args.get(0) {
+                Some(&b"LS") => {
+                    self.negotiating = true;
+                    info!("requests list");
+                    try!(irc!(sock, "CAP", "* LS :multi-prefix"));
+                },
+                Some(&b"REQ") => {
+                    self.negotiating = true;
+                    info!("requests capabilities");
+                    try!(irc!(sock, "CAP", "* ACK :multi-prefix"));
+                },
+                Some(&b"END") => {
+                    self.negotiating = false;
+                    info!("finishes negotiation");
+                },
+                Some(sc) => {
+                    try!(irc!(sock, "410", "*", sc, ":Invalid CAP subcommand"));
+                },
+                None => {
+                    try!(irc!(sock, "410", "* * :Missing CAP subcommand"));
+                },
+            },
+
             b"PASS" => info!("sets password"),
+
             b"NICK" => {
                 info!("sets nickname");
                 try!(irc!(sock, "NOTICE", ":got your nickname"));
                 self.nick = Some(());
             },
+
             b"USER" => {
                 info!("sets extra info");
                 try!(irc!(sock, "NOTICE", ":got your ident and gecos"));
                 self.user = Some(());
             },
+
             _ => info!("unknown command!"),
         }
 

@@ -261,22 +261,22 @@ impl PendingClientState {
                 Some(&b"LS") => {
                     self.negotiating = true;
                     info!("requests list");
-                    try!(irc!(sock, "CAP", "* LS :multi-prefix"));
+                    try!(irc!(sock, ":oxide.", "CAP", "* LS :multi-prefix"));
                 },
                 Some(&b"REQ") => {
                     self.negotiating = true;
                     info!("requests capabilities");
-                    try!(irc!(sock, "CAP", "* ACK :multi-prefix"));
+                    try!(irc!(sock, ":oxide.", "CAP", "* ACK :multi-prefix"));
                 },
                 Some(&b"END") => {
                     self.negotiating = false;
                     info!("finishes negotiation");
                 },
                 Some(sc) => {
-                    try!(irc!(sock, "410", "*", sc, ":Invalid CAP subcommand"));
+                    try!(irc!(sock, ":oxide.", "410", "*", sc, ":Invalid CAP subcommand"));
                 },
                 None => {
-                    try!(irc!(sock, "410", "* * :Missing CAP subcommand"));
+                    try!(irc!(sock, ":oxide.", "410", "* * :Missing CAP subcommand"));
                 },
             },
 

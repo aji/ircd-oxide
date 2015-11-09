@@ -9,7 +9,10 @@
 pub mod cap;
 pub mod client;
 pub mod command;
+pub mod global;
 pub mod linebuf;
+pub mod listen;
+pub mod pending;
 pub mod message;
 
 use std::cmp;

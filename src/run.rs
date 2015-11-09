@@ -12,42 +12,28 @@ use std::collections::HashMap;
 use std::io;
 use std::net::ToSocketAddrs;
 
-use irc::client::ClientManager;
-use irc::client::Listener;
-use irc::client::PendingClient;
-use irc::client::PendingClientAction;
+use irc::listen::Listener;
+use irc::pending::PendingClient;
 use state::world::WorldManager;
 
 /// The top-level IRC server structure
-pub struct IRCD<'obs> {
-    clients: ClientManager,
+pub struct IRCD {
     tokens: HashMap<mio::Token, TokenData>,
-    world: WorldManager<'obs>,
 }
 
 enum TokenData {
     Listener(Listener),
-    PendingClient(PendingClient),
 }
 
 enum Action {
     Continue,
-    ListenerAccept(PendingClient),
-    PendingClient(PendingClientAction),
 }
 
-impl<'obs> IRCD<'obs> {
+impl IRCD {
     /// Creates a new `IRCD`
-    pub fn new() -> IRCD<'obs> {
-        let clients = ClientManager::new();
-        let mut world = WorldManager::new();
-
-        world.observe(clients.clone());
-
+    pub fn new() -> IRCD {
         IRCD {
-            clients: clients,
             tokens: HashMap::new(),
-            world: world,
         }
     }
 
@@ -61,20 +47,9 @@ impl<'obs> IRCD<'obs> {
         self.tokens.insert(token, TokenData::Listener(listener));
         Ok(())
     }
-
-    fn add_pending_client(
-        &mut self,
-        pending: PendingClient,
-        ev: &mut mio::EventLoop<IRCD>
-    ) -> io::Result<()> {
-        let token = mio::Token(random());
-        try!(pending.register(token, ev));
-        self.tokens.insert(token, TokenData::PendingClient(pending));
-        Ok(())
-    }
 }
 
-impl<'obs> mio::Handler for IRCD<'obs> {
+impl mio::Handler for IRCD {
     type Timeout = ();
     type Message = ();
 
@@ -104,74 +79,28 @@ impl<'obs> mio::Handler for IRCD<'obs> {
             match *tdata {
                 TokenData::Listener(ref mut listener) => {
                     debug!("accepting new incoming connection");
-
-                    match listener.accept() {
-                        Err(e) => {
-                            error!("couldn't accept: {}", e);
-                            Action::Continue
-                        },
-
-                        Ok(pending) => Action::ListenerAccept(pending),
-                    }
-                },
-
-                TokenData::PendingClient(ref mut pending) => {
-                    Action::PendingClient(pending.ready())
+                    // TODO accept
                 },
             }
+
+            Action::Continue
         };
 
         match action {
             Action::Continue => { },
-
-            Action::ListenerAccept(pending) => {
-                if let Err(e) = self.add_pending_client(pending, ev) {
-                    error!("couldn't add pending client: {}", e);
-                }
-            },
-
-            Action::PendingClient(pca) => match pca {
-                PendingClientAction::Continue => {
-                },
-
-                PendingClientAction::Error |
-                PendingClientAction::Close => {
-                    match self.tokens.remove(&tk) {
-                        Some(TokenData::PendingClient(pending)) => {
-                            info!("dropping pending client");
-                            if let Err(e) = pending.deregister(ev) {
-                                error!("error when dropping pending \
-                                        client: {}", e);
-                            }
-                        },
-                        Some(tdata) => {
-                            error!("logic error: bad token for \
-                                    pending client close");
-                            self.tokens.insert(tk, tdata);
-                        },
-                        None => {
-                            error!("logic error: invalid token for \
-                                    pending client close");
-                        },
-                    }
-                },
-
-                PendingClientAction::Promote => {
-                },
-            }
         }
     }
 }
 
 /// A structure for running an `IRCD`
-pub struct Runner<'obs> {
-    ircd: IRCD<'obs>,
-    ev: mio::EventLoop<IRCD<'obs>>,
+pub struct Runner {
+    ircd: IRCD,
+    ev: mio::EventLoop<IRCD>,
 }
 
-impl<'obs> Runner<'obs> {
+impl Runner {
     /// Creates a new `Runner`
-    pub fn new() -> io::Result<Runner<'obs>> {
+    pub fn new() -> io::Result<Runner> {
         Ok(Runner {
             ircd: IRCD::new(),
             ev: try!(mio::EventLoop::new()),
@@ -179,7 +108,7 @@ impl<'obs> Runner<'obs> {
     }
 
     /// Gets a reference to the `IRCD`
-    pub fn ircd(&'obs mut self) -> &mut IRCD {
+    pub fn ircd(&mut self) -> &mut IRCD {
         &mut self.ircd
     }
 

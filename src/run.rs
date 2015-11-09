@@ -17,7 +17,7 @@ use irc::pending::PendingClient;
 use state::world::WorldManager;
 
 /// The top-level IRC server structure
-pub struct IRCD {
+pub struct Top {
     tokens: HashMap<mio::Token, TokenData>,
 }
 
@@ -29,10 +29,10 @@ enum Action {
     Continue,
 }
 
-impl IRCD {
-    /// Creates a new `IRCD`
-    pub fn new() -> IRCD {
-        IRCD {
+impl Top {
+    /// Creates a new `Top`
+    pub fn new() -> Top {
+        Top {
             tokens: HashMap::new(),
         }
     }
@@ -40,7 +40,7 @@ impl IRCD {
     fn add_listener(
         &mut self,
         listener: Listener,
-        ev: &mut mio::EventLoop<IRCD>
+        ev: &mut mio::EventLoop<Top>
     ) -> io::Result<()> {
         let token = mio::Token(random());
         try!(listener.register(token, ev));
@@ -49,13 +49,13 @@ impl IRCD {
     }
 }
 
-impl mio::Handler for IRCD {
+impl mio::Handler for Top {
     type Timeout = ();
     type Message = ();
 
     fn ready(
         &mut self,
-        ev: &mut mio::EventLoop<IRCD>,
+        ev: &mut mio::EventLoop<Top>,
         tk: mio::Token,
         _events: mio::EventSet
     ) {
@@ -92,24 +92,24 @@ impl mio::Handler for IRCD {
     }
 }
 
-/// A structure for running an `IRCD`
+/// A structure for running an `Top`
 pub struct Runner {
-    ircd: IRCD,
-    ev: mio::EventLoop<IRCD>,
+    top: Top,
+    ev: mio::EventLoop<Top>,
 }
 
 impl Runner {
     /// Creates a new `Runner`
     pub fn new() -> io::Result<Runner> {
         Ok(Runner {
-            ircd: IRCD::new(),
+            top: Top::new(),
             ev: try!(mio::EventLoop::new()),
         })
     }
 
-    /// Gets a reference to the `IRCD`
-    pub fn ircd(&mut self) -> &mut IRCD {
-        &mut self.ircd
+    /// Gets a reference to the `Top`
+    pub fn top(&mut self) -> &mut Top {
+        &mut self.top
     }
 
     /// Adds an IRC listener on the given port
@@ -123,12 +123,12 @@ impl Runner {
             try!(mio::tcp::TcpListener::bind(&addr))
         };
 
-        self.ircd.add_listener(Listener::new(listener), &mut self.ev)
+        self.top.add_listener(Listener::new(listener), &mut self.ev)
     }
 
     /// Runs the `Runner` forever
     pub fn run(&mut self) {
         info!("ircd-oxide starting");
-        self.ev.run(&mut self.ircd).expect("event loop stopped with error");
+        self.ev.run(&mut self.top).expect("event loop stopped with error");
     }
 }

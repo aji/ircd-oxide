@@ -12,3 +12,10 @@
 
 /// The top level IRC server type
 pub struct IRCD;
+
+impl IRCD {
+    /// Creates a new `IRCD`
+    pub fn new() -> IRCD {
+        IRCD
+    }
+}

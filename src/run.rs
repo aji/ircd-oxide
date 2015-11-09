@@ -12,27 +12,31 @@ use std::collections::HashMap;
 use std::io;
 use std::net::ToSocketAddrs;
 
+use irc::global::IRCD;
 use irc::listen::Listener;
 use irc::pending::PendingClient;
-use state::world::WorldManager;
 
 /// The top-level IRC server structure
 pub struct Top {
+    ircd: IRCD,
     tokens: HashMap<mio::Token, TokenData>,
 }
 
 enum TokenData {
     Listener(Listener),
+    Pending(PendingClient),
 }
 
 enum Action {
     Continue,
+    AddPending(PendingClient),
 }
 
 impl Top {
     /// Creates a new `Top`
     pub fn new() -> Top {
         Top {
+            ircd: IRCD::new(),
             tokens: HashMap::new(),
         }
     }
@@ -45,6 +49,17 @@ impl Top {
         let token = mio::Token(random());
         try!(listener.register(token, ev));
         self.tokens.insert(token, TokenData::Listener(listener));
+        Ok(())
+    }
+
+    fn add_pending(
+        &mut self,
+        pending: PendingClient,
+        ev: &mut mio::EventLoop<Top>
+    ) -> io::Result<()> {
+        let token = mio::Token(random());
+        try!(pending.register(token, ev));
+        self.tokens.insert(token, TokenData::Pending(pending));
         Ok(())
     }
 }
@@ -66,6 +81,12 @@ impl mio::Handler for Top {
         //
         //    let action = ...;
         //    match action { ... }
+        //
+        // This structure is necessary because determining what action to take
+        // borrows the structures to be acted upon mutably. We have to remember
+        // what we wanted to do with an Action, release our borrow, and then
+        // take a new borrow to perform the Action. It's a little screwy and I'd
+        // highly appreciate guidance to do it better!
 
         let action = {
             let tdata = match self.tokens.get_mut(&tk) {
@@ -79,15 +100,31 @@ impl mio::Handler for Top {
             match *tdata {
                 TokenData::Listener(ref mut listener) => {
                     debug!("accepting new incoming connection");
-                    // TODO accept
+
+                    match listener.accept() {
+                        Ok(p) => Action::AddPending(p),
+
+                        Err(e) => {
+                            error!("error during accept(): {}", e);
+                            Action::Continue
+                        }
+                    }
+                },
+
+                TokenData::Pending(ref mut pending) => {
+                    Action::Continue
                 },
             }
-
-            Action::Continue
         };
 
         match action {
             Action::Continue => { },
+
+            Action::AddPending(pending) => {
+                if let Err(e) = self.add_pending(pending, ev) {
+                    error!("error adding pending client: {}", e);
+                }
+            },
         }
     }
 }

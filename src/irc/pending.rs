@@ -6,11 +6,50 @@
 
 //! Pending client handlers
 
+use mio;
+use mio::tcp::TcpStream;
+use std::convert::From;
+use std::io;
+
 use irc::CommandSet;
+use irc::LineBuffer;
 use irc::Message;
 
 /// Pending client data
-pub struct PendingClient;
+pub struct PendingClient {
+    sock: TcpStream,
+    lb: LineBuffer,
+    data: PendingData,
+}
+
+struct PendingData;
+
+impl PendingClient {
+    fn new(sock: TcpStream) -> PendingClient {
+        PendingClient {
+            sock: sock,
+            lb: LineBuffer::new(),
+            data: PendingData
+        }
+    }
+
+    /// Registers the `PendingClient` with the given `EventLoop`
+    pub fn register<H>(&self, tok: mio::Token, ev: &mut mio::EventLoop<H>)
+    -> io::Result<()> where H: mio::Handler {
+        ev.register_opt(
+            &self.sock,
+            tok,
+            mio::EventSet::readable(),
+            mio::PollOpt::level()
+        )
+    }
+}
+
+impl From<TcpStream> for PendingClient {
+    fn from(s: TcpStream) -> PendingClient {
+        PendingClient::new(s)
+    }
+}
 
 /// A pending client handler.
 pub struct PendingHandler<'c> {

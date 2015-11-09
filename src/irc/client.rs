@@ -17,6 +17,7 @@ use std::mem;
 use std::rc::Rc;
 
 use irc::ClientCaps;
+use irc::CommandSet;
 use irc::LineBuffer;
 use irc::Message;
 use state::world;
@@ -256,47 +257,77 @@ impl PendingClientState {
     }
 
     fn transition(&mut self, m: Message, sock: &mut TcpStream) -> io::Result<()> {
-        match m.verb {
-            b"CAP" => match m.args.get(0) {
+        let cs = {
+            let mut cs = CommandSet::new();
+            PendingClientState::transitions(&mut cs);
+            cs
+        };
+
+        let res = cs.handle(m.verb, (self, m, sock));
+
+        match res {
+            Some(res) => res,
+            None => {
+                info!("uses unknown command");
+                Ok(())
+            }
+        }
+    }
+
+    fn transitions(cmds: &mut CommandSet<(
+        &mut PendingClientState,
+        Message,
+        &mut TcpStream
+    ), io::Result<()>>) {
+        cmds.cmd(b"CAP", |(pcs, m, sock)| {
+            match m.args.get(0) {
                 Some(&b"LS") => {
-                    self.negotiating = true;
+                    pcs.negotiating = true;
                     info!("requests list");
                     try!(irc!(sock, ":oxide.", "CAP", "* LS :multi-prefix"));
                 },
+
                 Some(&b"REQ") => {
-                    self.negotiating = true;
+                    pcs.negotiating = true;
                     info!("requests capabilities");
                     try!(irc!(sock, ":oxide.", "CAP", "* ACK :multi-prefix"));
                 },
+
                 Some(&b"END") => {
-                    self.negotiating = false;
+                    pcs.negotiating = false;
                     info!("finishes negotiation");
                 },
+
                 Some(sc) => {
-                    try!(irc!(sock, ":oxide.", "410", "*", sc, ":Invalid CAP subcommand"));
+                    try!(irc!(sock, ":oxide.", "410", "*",
+                            sc, ":Invalid CAP subcommand"));
                 },
+
                 None => {
-                    try!(irc!(sock, ":oxide.", "410", "* * :Missing CAP subcommand"));
+                    try!(irc!(sock, ":oxide.", "410",
+                            "* * :Missing CAP subcommand"));
                 },
-            },
+            }
+            Ok(())
+        });
 
-            b"PASS" => info!("sets password"),
+        cmds.cmd(b"PASS", |(pcs, m, sock)| {
+            info!("sets password");
+            Ok(())
+        });
 
-            b"NICK" => {
-                info!("sets nickname");
-                try!(irc!(sock, "NOTICE", ":got your nickname"));
-                self.nick = Some(());
-            },
+        cmds.cmd(b"NICK", |(pcs, m, sock)| {
+            info!("sets nickname");
+            try!(irc!(sock, "NOTICE", ":got your nickname"));
+            pcs.nick = Some(());
+            Ok(())
+        });
 
-            b"USER" => {
-                info!("sets extra info");
-                try!(irc!(sock, "NOTICE", ":got your ident and gecos"));
-                self.user = Some(());
-            },
-
-            _ => info!("unknown command!"),
-        }
-
-        Ok(())
+        cmds.cmd(b"USER", |(pcs, m, sock)| {
+            info!("sets extra info");
+            try!(irc!(sock, "NOTICE", ":got your ident and gecos"));
+            pcs.user = Some(());
+            Ok(())
+        });
     }
 }

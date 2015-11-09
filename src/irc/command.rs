@@ -9,11 +9,11 @@
 use std::collections::HashMap;
 
 /// A set of command handlers
-pub struct CommandSet<X: 'static, Y: 'static> {
-    cmds: HashMap<Vec<u8>, Box<Fn(&mut X) -> Y>>
+pub struct CommandSet<X, Y> {
+    cmds: HashMap<Vec<u8>, Box<Fn(X) -> Y>>
 }
 
-impl<X: 'static, Y: 'static> CommandSet<X, Y> {
+impl<X, Y> CommandSet<X, Y> {
     /// Creates an empty `CommandSet`
     pub fn new() -> CommandSet<X, Y> {
         CommandSet {
@@ -23,12 +23,12 @@ impl<X: 'static, Y: 'static> CommandSet<X, Y> {
 
     /// Adds a new command handler
     pub fn cmd<F>(&mut self, verb: &[u8], f: F)
-    where F: 'static + Fn(&mut X) -> Y {
+    where F: 'static + Fn(X) -> Y {
         self.cmds.insert(verb.to_vec(), Box::new(f));
     }
 
     /// Handles a command
-    pub fn handle(&self, verb: &[u8], x: &mut X) -> Option<Y> {
+    pub fn handle(&self, verb: &[u8], x: X) -> Option<Y> {
         self.cmds.get(verb).map(|h| h(x))
     }
 }

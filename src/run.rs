@@ -15,11 +15,13 @@ use std::net::ToSocketAddrs;
 use irc::global::IRCD;
 use irc::listen::Listener;
 use irc::pending::PendingClient;
+use irc::pending::PendingHandler;
 
 /// The top-level IRC server structure
-pub struct Top {
+pub struct Top<'c> {
     ircd: IRCD,
     tokens: HashMap<mio::Token, TokenData>,
+    pch: PendingHandler<'c>,
 }
 
 enum TokenData {
@@ -32,12 +34,13 @@ enum Action {
     AddPending(PendingClient),
 }
 
-impl Top {
+impl<'c> Top<'c> {
     /// Creates a new `Top`
-    pub fn new() -> Top {
+    pub fn new() -> Top<'c> {
         Top {
             ircd: IRCD::new(),
             tokens: HashMap::new(),
+            pch: PendingHandler::new(),
         }
     }
 
@@ -64,7 +67,7 @@ impl Top {
     }
 }
 
-impl mio::Handler for Top {
+impl<'c> mio::Handler for Top<'c> {
     type Timeout = ();
     type Message = ();
 
@@ -130,14 +133,14 @@ impl mio::Handler for Top {
 }
 
 /// A structure for running an `Top`
-pub struct Runner {
-    top: Top,
-    ev: mio::EventLoop<Top>,
+pub struct Runner<'c> {
+    top: Top<'c>,
+    ev: mio::EventLoop<Top<'c>>,
 }
 
-impl Runner {
+impl<'c> Runner<'c> {
     /// Creates a new `Runner`
-    pub fn new() -> io::Result<Runner> {
+    pub fn new() -> io::Result<Runner<'c>> {
         Ok(Runner {
             top: Top::new(),
             ev: try!(mio::EventLoop::new()),
@@ -145,7 +148,7 @@ impl Runner {
     }
 
     /// Gets a reference to the `Top`
-    pub fn top(&mut self) -> &mut Top {
+    pub fn top(&mut self) -> &mut Top<'c> {
         &mut self.top
     }
 

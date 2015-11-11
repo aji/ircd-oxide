@@ -29,8 +29,13 @@ enum TokenData {
     Pending(PendingClient),
 }
 
-enum Action {
+/// An action to be performed by the run loop after handling an event.
+pub enum Action {
+    /// Do nothing
     Continue,
+    /// Drop the peer that handled the event
+    DropPeer,
+    /// Add a pending client
     AddPending(PendingClient),
 }
 
@@ -108,21 +113,33 @@ impl mio::Handler for Top {
                         Ok(p) => Action::AddPending(p),
 
                         Err(e) => {
-                            error!("error during accept(): {}", e);
+                            error!("accepting client: {}", e);
                             Action::Continue
                         }
                     }
                 },
 
                 TokenData::Pending(ref mut pending) => {
-                    pending.ready();
-                    Action::Continue
+                    match pending.ready(&self.pch) {
+                        Ok(action) => action,
+
+                        Err(e) => {
+                            info!("dropping pending client: {}", e);
+                            Action::DropPeer
+                        }
+                    }
                 },
             }
         };
 
         match action {
             Action::Continue => { },
+
+            Action::DropPeer => {
+                if let None = self.tokens.remove(&tk) {
+                    warn!("DropPeer for token {:?} we don't have", tk);
+                }
+            },
 
             Action::AddPending(pending) => {
                 if let Err(e) = self.add_pending(pending, ev) {

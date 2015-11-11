@@ -16,6 +16,26 @@ use std::mem;
 
 use irc::LineBuffer;
 use irc::Message;
+use run;
+
+struct PendingData {
+    nick: Option<Vec<u8>>,
+    user: Option<Vec<u8>>,
+}
+
+impl PendingData {
+    fn new() -> PendingData {
+        PendingData {
+            nick: None,
+            user: None,
+        }
+    }
+
+    fn can_promote(&self) -> bool {
+        self.nick.is_some() &&
+        self.user.is_some()
+    }
+}
 
 /// Pending client data
 pub struct PendingClient {
@@ -24,14 +44,12 @@ pub struct PendingClient {
     data: PendingData,
 }
 
-struct PendingData;
-
 impl PendingClient {
     fn new(sock: TcpStream) -> PendingClient {
         PendingClient {
             sock: sock,
             lb: LineBuffer::new(),
-            data: PendingData
+            data: PendingData::new(),
         }
     }
 
@@ -47,14 +65,41 @@ impl PendingClient {
     }
 
     /// Called to indicate data is ready on the client's socket.
-    pub fn ready(&mut self) {
+    pub fn ready(&mut self, pch: &PendingHandler) -> io::Result<run::Action> {
         let mut buf: [u8; 2048] = unsafe { mem::uninitialized() };
-        let len = self.sock.read(&mut buf).expect("client read");
+        let len = try!(self.sock.read(&mut buf));
+
+        if len == 0 {
+            return Ok(run::Action::DropPeer);
+        }
+
+        // we have to do this because borrowck cannot split borrows across
+        // closure boundaries, so we split it out here where we can.
+        let ctx = &mut self.data;
 
         let _: Option<()> = self.lb.split(&buf[..len], |ln| {
-            info!(" -> {}", String::from_utf8_lossy(ln));
-            None
+            let m = match Message::parse(ln) {
+                Ok(m) => m,
+                Err(_) => return None,
+            };
+
+            debug!(" -> {}", String::from_utf8_lossy(ln));
+            debug!("    {:?}", m);
+
+            pch.handle(ctx, &m);
+
+            if ctx.can_promote() {
+                Some(())
+            } else {
+                None
+            }
         });
+
+        if ctx.can_promote() {
+            Ok(run::Action::DropPeer)
+        } else {
+            Ok(run::Action::Continue)
+        }
     }
 }
 
@@ -64,7 +109,11 @@ impl From<TcpStream> for PendingClient {
     }
 }
 
-type HandlerFn = Box<for<'c> Fn(&mut PendingData, &Message<'c>) -> Option<()>>;
+// make sure to keep this in sync with the constraint on `PendingHandler::add`.
+struct HandlerFn {
+    args: usize,
+    cb: Box<for<'c> Fn(&mut PendingData, &Message<'c>)>,
+}
 
 /// A pending client handler.
 pub struct PendingHandler {
@@ -74,12 +123,56 @@ pub struct PendingHandler {
 impl PendingHandler {
     /// Creates a new pending client handling structure.
     pub fn new() -> PendingHandler {
-        PendingHandler {
+        let mut pch = PendingHandler {
             handlers: HashMap::new()
-        }
+        };
+
+        handlers(&mut pch);
+
+        pch
+    }
+
+    /// Adds a handler function. If a handler is already defined for the given
+    /// verb, nothing is added.
+    fn add<F>(&mut self, verb: &[u8], args: usize, func: F)
+    where F: 'static + for<'c> Fn(&mut PendingData, &Message<'c>) {
+        self.handlers.entry(verb.to_vec()).or_insert_with(|| HandlerFn {
+            args: args,
+            cb: Box::new(func)
+        });
     }
 
     /// Handles a message from a pending client.
-    fn handle<'c>(&self, ctx: &'c mut PendingData, m: Message<'c>) {
+    fn handle<'c>(&self, ctx: &'c mut PendingData, m: &Message<'c>) {
+        match self.handlers.get(m.verb) {
+            Some(hdlr) => {
+                if m.args.len() < hdlr.args {
+                    debug!("not enough args!");
+                } else {
+                    (hdlr.cb)(ctx, m);
+                }
+            },
+
+            None => {
+                debug!("pending client used unknown command");
+            }
+        }
     }
+}
+
+// in a function so we can dedent
+fn handlers(pch: &mut PendingHandler) {
+    pch.add(b"CAP", 1, |ctx, m| {
+        info!("capabilities!");
+    });
+
+    pch.add(b"NICK", 1, |ctx, m| {
+        ctx.nick = Some(m.args[0].to_vec());
+        info!("nickname = {:?}", ctx.nick);
+    });
+
+    pch.add(b"USER", 4, |ctx, m| {
+        ctx.user = Some(m.args[0].to_vec());
+        info!("username = {:?}", ctx.user);
+    });
 }

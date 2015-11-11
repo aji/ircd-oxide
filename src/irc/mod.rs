@@ -8,7 +8,6 @@
 
 pub mod cap;
 pub mod client;
-pub mod command;
 pub mod global;
 pub mod linebuf;
 pub mod listen;
@@ -19,7 +18,6 @@ use std::cmp;
 use std::convert::From;
 
 pub use self::cap::ClientCaps;
-pub use self::command::CommandSet;
 pub use self::linebuf::LineBuffer;
 pub use self::message::Message;
 

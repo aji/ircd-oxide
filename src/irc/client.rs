@@ -7,27 +7,21 @@
 //! Client handling
 
 use irc::global::IRCD;
-use irc::CommandSet;
 use irc::Message;
 
 /// The context of an incoming client message.
 pub struct ClientContext;
 
 /// A client handler.
-pub struct ClientHandler<'c> {
-    cmds: CommandSet<(&'c mut IRCD, ClientContext, Message<'c>), ()>
-}
+pub struct ClientHandler;
 
-impl<'c> ClientHandler<'c> {
+impl ClientHandler {
     /// Creates a new client handling structure.
-    pub fn new() -> ClientHandler<'c> {
-        ClientHandler {
-            cmds: CommandSet::new()
-        }
+    pub fn new() -> ClientHandler {
+        ClientHandler
     }
 
     /// Handles a message from a client.
-    pub fn handle(&self, ircd: &'c mut IRCD, ctx: ClientContext, m: Message<'c>) {
-        self.cmds.handle(m.verb, (ircd, ctx, m));
+    pub fn handle<'c>(&self, ircd: &'c mut IRCD, ctx: ClientContext, m: Message<'c>) {
     }
 }

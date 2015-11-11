@@ -8,10 +8,12 @@
 
 use mio;
 use mio::tcp::TcpStream;
+use std::collections::HashMap;
 use std::convert::From;
 use std::io;
+use std::io::prelude::*;
+use std::mem;
 
-use irc::CommandSet;
 use irc::LineBuffer;
 use irc::Message;
 
@@ -43,6 +45,17 @@ impl PendingClient {
             mio::PollOpt::level()
         )
     }
+
+    /// Called to indicate data is ready on the client's socket.
+    pub fn ready(&mut self) {
+        let mut buf: [u8; 2048] = unsafe { mem::uninitialized() };
+        let len = self.sock.read(&mut buf).expect("client read");
+
+        let _: Option<()> = self.lb.split(&buf[..len], |ln| {
+            info!(" -> {}", String::from_utf8_lossy(ln));
+            None
+        });
+    }
 }
 
 impl From<TcpStream> for PendingClient {
@@ -51,21 +64,22 @@ impl From<TcpStream> for PendingClient {
     }
 }
 
+type HandlerFn = Box<for<'c> Fn(&mut PendingData, &Message<'c>) -> Option<()>>;
+
 /// A pending client handler.
-pub struct PendingHandler<'c> {
-    cmds: CommandSet<(&'c mut PendingClient, Message<'c>), ()>
+pub struct PendingHandler {
+    handlers: HashMap<Vec<u8>, HandlerFn>,
 }
 
-impl<'c> PendingHandler<'c> {
+impl PendingHandler {
     /// Creates a new pending client handling structure.
-    pub fn new() -> PendingHandler<'c> {
+    pub fn new() -> PendingHandler {
         PendingHandler {
-            cmds: CommandSet::new()
+            handlers: HashMap::new()
         }
     }
 
     /// Handles a message from a pending client.
-    pub fn handle(&self, ctx: &'c mut PendingClient, m: Message<'c>) {
-        self.cmds.handle(m.verb, (ctx, m));
+    fn handle<'c>(&self, ctx: &'c mut PendingData, m: Message<'c>) {
     }
 }

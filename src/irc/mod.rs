@@ -18,6 +18,7 @@ use std::cmp;
 use std::convert::From;
 
 pub use self::cap::ClientCaps;
+pub use self::global::IRCD;
 pub use self::linebuf::LineBuffer;
 pub use self::message::Message;
 

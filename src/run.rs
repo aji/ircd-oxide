@@ -120,7 +120,7 @@ impl mio::Handler for Top {
                 },
 
                 TokenData::Pending(ref mut pending) => {
-                    match pending.ready(&self.pch) {
+                    match pending.ready(&self.ircd, &self.pch) {
                         Ok(action) => action,
 
                         Err(e) => {

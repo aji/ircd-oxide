@@ -12,11 +12,10 @@ use std::collections::HashMap;
 use std::convert::From;
 use std::io;
 use std::io::prelude::*;
-use std::mem;
 
 use irc::IRCD;
-use irc::LineBuffer;
 use irc::Message;
+use irc::net::IrcStream;
 use run;
 
 struct PendingData {
@@ -40,16 +39,14 @@ impl PendingData {
 
 /// Pending client data
 pub struct PendingClient {
-    sock: TcpStream,
-    lb: LineBuffer,
+    sock: IrcStream,
     data: PendingData,
 }
 
 impl PendingClient {
     fn new(sock: TcpStream) -> PendingClient {
         PendingClient {
-            sock: sock,
-            lb: LineBuffer::new(),
+            sock: IrcStream::new(sock),
             data: PendingData::new(),
         }
     }
@@ -57,29 +54,21 @@ impl PendingClient {
     /// Registers the `PendingClient` with the given `EventLoop`
     pub fn register<H>(&self, tok: mio::Token, ev: &mut mio::EventLoop<H>)
     -> io::Result<()> where H: mio::Handler {
-        ev.register_opt(
-            &self.sock,
-            tok,
-            mio::EventSet::readable(),
-            mio::PollOpt::level()
-        )
+        self.sock.register(tok, ev)
     }
 
     /// Called to indicate data is ready on the client's socket.
     pub fn ready(&mut self, ircd: &IRCD, pch: &PendingHandler)
     -> io::Result<run::Action> {
-        let mut buf: [u8; 2048] = unsafe { mem::uninitialized() };
-        let len = try!(self.sock.read(&mut buf));
-
-        if len == 0 {
-            return Ok(run::Action::DropPeer);
-        }
-
         // we have to do this because borrowck cannot split borrows across
         // closure boundaries, so we split it out here where we can.
         let ctx = &mut self.data;
 
-        let _: Option<()> = self.lb.split(&buf[..len], |ln| {
+        if self.sock.empty() {
+            return Ok(run::Action::DropPeer);
+        }
+
+        let _: Option<()> = try!(self.sock.read(|ln| {
             let m = match Message::parse(ln) {
                 Ok(m) => m,
                 Err(_) => return None,
@@ -95,7 +84,7 @@ impl PendingClient {
             } else {
                 None
             }
-        });
+        }));
 
         if ctx.can_promote() {
             Ok(run::Action::DropPeer)

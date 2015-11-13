@@ -11,7 +11,9 @@
 // can only happen if two calls are made to `read` at the same time, but it's
 // still a code smell, and I don't like it at all.
 
+use mio;
 use mio::tcp::TcpStream;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::io;
 use std::io::prelude::*;
@@ -21,6 +23,7 @@ use irc::LineBuffer;
 
 /// An IRC stream that can be interacted with through immutable references.
 pub struct IrcStream {
+    empty: Cell<bool>,
     lb: RefCell<LineBuffer>,
     sock: RefCell<TcpStream>
 }
@@ -29,9 +32,26 @@ impl IrcStream {
     /// Creates a new IRC stream from a mio `TcpStream`
     pub fn new(sock: TcpStream) -> IrcStream {
         IrcStream {
+            empty: Cell::new(false),
             lb: RefCell::new(LineBuffer::new()),
             sock: RefCell::new(sock)
         }
+    }
+
+    /// Registers the `IrcStream` with the given `EventLoop`
+    pub fn register<H>(&self, tok: mio::Token, ev: &mut mio::EventLoop<H>)
+    -> io::Result<()> where H: mio::Handler {
+        ev.register_opt(
+            &*self.sock.borrow(),
+            tok,
+            mio::EventSet::readable(),
+            mio::PollOpt::level()
+        )
+    }
+
+    /// Returns true if the `IrcStream` is empty
+    pub fn empty(&self) -> bool {
+        self.empty.get()
     }
 
     /// Reads some lines from the stream, using the same API as `LineBuffer`
@@ -48,7 +68,12 @@ impl IrcStream {
             len
         };
 
-        Ok(self.lb.borrow_mut().split(&buf[..len], cb))
+        if len == 0 {
+            self.empty.set(true);
+            Ok(None)
+        } else {
+            Ok(self.lb.borrow_mut().split(&buf[..len], cb))
+        }
     }
 
     /// Writes some data to the stream. This is more or less a proxy for the

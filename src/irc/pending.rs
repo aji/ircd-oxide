@@ -43,6 +43,13 @@ pub struct PendingClient {
     data: PendingData,
 }
 
+// simplifies command invocations
+struct PendingContext<'c> {
+    ircd: &'c IRCD,
+    sock: &'c IrcStream,
+    data: &'c mut PendingData,
+}
+
 impl PendingClient {
     fn new(sock: TcpStream) -> PendingClient {
         PendingClient {
@@ -62,7 +69,8 @@ impl PendingClient {
     -> io::Result<run::Action> {
         // we have to do this because borrowck cannot split borrows across
         // closure boundaries, so we split it out here where we can.
-        let ctx = &mut self.data;
+        let sock = &self.sock;
+        let data = &mut self.data;
 
         if self.sock.empty() {
             return Ok(run::Action::DropPeer);
@@ -74,19 +82,25 @@ impl PendingClient {
                 Err(_) => return None,
             };
 
+            let mut ctx = PendingContext {
+                ircd: ircd,
+                sock: sock,
+                data: data,
+            };
+
             debug!(" -> {}", String::from_utf8_lossy(ln));
             debug!("    {:?}", m);
 
-            pch.handle(ircd, ctx, &m);
+            pch.handle(&mut ctx, &m);
 
-            if ctx.can_promote() {
+            if ctx.data.can_promote() {
                 Some(())
             } else {
                 None
             }
         }));
 
-        if ctx.can_promote() {
+        if data.can_promote() {
             Ok(run::Action::DropPeer)
         } else {
             Ok(run::Action::Continue)
@@ -103,7 +117,7 @@ impl From<TcpStream> for PendingClient {
 // make sure to keep this in sync with the constraint on `PendingHandler::add`.
 struct HandlerFn {
     args: usize,
-    cb: Box<for<'c> Fn(&IRCD, &mut PendingData, &Message<'c>)>,
+    cb: Box<for<'c> Fn(&mut PendingContext<'c>, &Message<'c>)>,
 }
 
 /// A pending client handler.
@@ -126,7 +140,7 @@ impl PendingHandler {
     /// Adds a handler function. If a handler is already defined for the given
     /// verb, nothing is added.
     fn add<F>(&mut self, verb: &[u8], args: usize, func: F)
-    where F: 'static + for<'c> Fn(&IRCD, &mut PendingData, &Message<'c>) {
+    where F: 'static + for<'c> Fn(&mut PendingContext<'c>, &Message<'c>) {
         self.handlers.entry(verb.to_vec()).or_insert_with(|| HandlerFn {
             args: args,
             cb: Box::new(func)
@@ -134,13 +148,13 @@ impl PendingHandler {
     }
 
     /// Handles a message from a pending client.
-    fn handle<'c>(&self, ircd: &IRCD, ctx: &'c mut PendingData, m: &Message<'c>) {
+    fn handle<'c>(&self, ctx: &mut PendingContext<'c>, m: &Message<'c>) {
         match self.handlers.get(m.verb) {
             Some(hdlr) => {
                 if m.args.len() < hdlr.args {
                     debug!("not enough args!");
                 } else {
-                    (hdlr.cb)(ircd, ctx, m);
+                    (hdlr.cb)(ctx, m);
                 }
             },
 
@@ -153,17 +167,17 @@ impl PendingHandler {
 
 // in a function so we can dedent
 fn handlers(pch: &mut PendingHandler) {
-    pch.add(b"CAP", 1, |_ircd, _ctx, _m| {
+    pch.add(b"CAP", 1, |_ctx, _m| {
         info!("capabilities!");
     });
 
-    pch.add(b"NICK", 1, |_ircd, ctx, m| {
-        ctx.nick = Some(m.args[0].to_vec());
-        info!("nickname = {:?}", ctx.nick);
+    pch.add(b"NICK", 1, |ctx, m| {
+        ctx.data.nick = Some(m.args[0].to_vec());
+        info!("nickname = {:?}", ctx.data.nick);
     });
 
-    pch.add(b"USER", 4, |_ircd, ctx, m| {
-        ctx.user = Some(m.args[0].to_vec());
-        info!("username = {:?}", ctx.user);
+    pch.add(b"USER", 4, |ctx, m| {
+        ctx.data.user = Some(m.args[0].to_vec());
+        info!("username = {:?}", ctx.data.user);
     });
 }

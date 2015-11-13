@@ -12,8 +12,8 @@ pub mod global;
 pub mod linebuf;
 pub mod listen;
 pub mod message;
+pub mod net;
 pub mod pending;
-pub mod post;
 
 use std::cmp;
 use std::convert::From;

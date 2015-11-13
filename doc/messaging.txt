@@ -1,0 +1,105 @@
+it's important that protocol messages be able to be formatted as ergonomically
+as possible. this is more to support the programmer, as the client protocol
+won't be changing much. however, it's a good idea for the programmer to be able
+to think about the protocol itself as little as possible. this makes code both
+easier to read, and less error-prone to write.
+
+
+THE PROBLEM
+
+for the purpose of designing this API, I'm grouping message formats into a
+handful of categories:
+
+ (1) unsourced messages (as far as I know, only used in server-generated
+     messages for PING, so we could probably get away with ignoring this
+     entirely. however, some badly-written clients may rely on PING appearing at
+     the start of the line, so we really shouldn't.)
+
+ (2) "normal" server-sourced messages, like NOTICE and CAP.
+
+ (3) server-sourced numerics. this presents a small challenge, as it's most
+     developer-friendly to be able to refer to numerics by name, rather than
+     number. perhaps a more significant challenge, the text of a numeric is
+     often fixed, or at least parameterizable. for example, the RPL_LIST numeric
+     has fields for the channel name, number of users, and channel topic.
+
+ (4) client-sourced messages
+
+
+FIRST IDEA: MACRO SOUP
+
+one possible option is to create a macro for every single kind of message that
+expand into a basic "concatenate these &[u8] into a line and send it"
+invocation, so `irc_ping!`, `irc_server_notice!`, `irc_rpl_list!`, etc. to
+simplify use of this API, it might be a good idea to create traits for
+"sourceable" things, so e.g. `irc_notice!` could be used with either a server
+or client, and the macro would expand to include `IrcSource::write(src,
+writable)`.
+
+PROS: this addresses just about every usability concern. the programmer could
+choose the most appropriate macro from the hierarchy of macros and write a very
+concise bit of code to do what they want, for example, `irc_notice!(ircd,
+"nickname ", nick, " in use")`, or `irc_err_nicknameinuse!(ircd, nick)`, or
+`irc!(":oxide. NOTICE * :nickname ", nick, " in use")`
+
+CONS: obviously maintaining this HUGE list of macros would be a major
+maintainability concern. on the bright side, these macros could live in their
+own files that nobody ever has to look at ever. another downside, these macro
+invocations would expand into a simple write call (the only requirement is that
+formattable arguments be referencable as &[u8]s), we get no help from the
+compiler in enforcing any sort of correctness in output formatting. IRC is a
+drop dead simple protocol and it would be nice if we could leverage rustc to
+make it hard to mess up.
+
+
+SECOND IDEA: SPECIALIZED WRITER FUNCTIONS
+
+these would probably live on some trait (perhaps satisfying Write) and would be
+written to take only the arguments needed. continuing with the idea to use
+traits to represent "sourceable" and "targetable" things, this could result in
+a very nice API:
+
+   sock.irc_privmsg(&user, &chan, b"derp derp it's a privmsg");
+
+an IrcNumeric enum could be added with a function for taking a slice of &[u8]s
+and writing out a formatted numeric. this could complicate certain numerics
+that expect number-like (indeed, "numeric") arguments, which would force the
+caller to convert them into a &[u8] beforehand. this could perhaps be
+simplified with the help of macros (generic, like format_u8!).
+
+PROS: reduces the number of ways lines can be sent to clients to a subset that
+still covers the correct cases. macros could still be used to help, but would
+expand to one of a variety of function calls which could put better constraints
+on their arguments. additionally, with the exception of numerics (there's
+almost no good way to safely do numerics), the number of entry points to the
+API would be a small set of generic functions and some macros to cover the
+common cases.
+
+CONS: potential usability threat. while reducing the kinds of arguments the API
+accepts would make it harder to accidentally provide the wrong argument, it can
+also make it harder to provide the *right* argument in the case where the data
+we have and the data the API wants don't immediately match. this could be
+mitigated by either forming the API to match the data we have (better for
+saftey, but harder to write), or forming the data we have to match the API
+(makes writing the API simpler, but couples the core to the writer API,
+something conceptually in the periphery).
+
+
+CONCLUSIONS?
+
+from 10,000 ft, it's sounding more and more like the specialized writers is the
+way to go. with the help of traits, this could be made very ergonomic:
+
+  fn irc_notice<S, T>(&mut self, src: S, tgt: T, msg: &[u8])
+  where S: IrcSource, T: IrcTarget { ... }
+
+then User could implement IrcSource, Channel could implement IrcTarget, etc.
+to support the case where the server wants to send a notice to a user, a macro
+could be written:
+
+  format_irc_notice!(ircd, user, "you can't do that!!")
+  =>
+  user.stream().irc_notice(ircd, user.target(), format!("you can't do that!!").as_bytes())
+
+or something! to support this, we'd have to write another trait that lets
+something be split into a stream and a target like this.

@@ -5,5 +5,3 @@
 // the COPYING file in the project root.
 
 //! Macros
-
-macro_rules! irc { }

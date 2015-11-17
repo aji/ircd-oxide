@@ -6,6 +6,8 @@
 
 //! Formatting IRC messages
 
+use std::io;
+
 use irc::numeric::Numeric;
 use irc::net::IrcStream;
 
@@ -38,6 +40,61 @@ pub struct IrcWriter<'w> {
 impl<'w> IrcWriter<'w> {
     fn new(fmt: &'w IrcFormatter, sock: &'w IrcStream) -> IrcWriter<'w> {
         IrcWriter { fmt: fmt, sock: sock }
+    }
+
+    /// Sends a numeric to the client
+    pub fn numeric(&self, num: Numeric, nick: &[u8], args: &[&[u8]]) -> io::Result<()> {
+        use std::mem;
+
+        let mut msgbuf: [u8; 2048] = unsafe { mem::uninitialized() };
+        let mut outbuf: [u8; 2048] = unsafe { mem::uninitialized() };
+
+        let msg = {
+            let len = sprintf(&mut msgbuf[..], num.string().as_bytes(), args);
+            &msgbuf[..len]
+        };
+
+        let mut out = {
+            let numstr = format!("{}", num.numeric());
+            let len = sprintf(&mut outbuf[..], b":%s %s %s %s\r\n", &[
+                &self.fmt.server[..], numstr.as_bytes(), nick, msg
+            ]);
+            &outbuf[..len]
+        };
+
+        while out.len() > 0 {
+            let len = try!(self.sock.write(out));
+            out = &out[len..];
+        }
+
+        Ok(())
+    }
+
+    /// Sends a notice to the client, from the server
+    pub fn snotice(&self, nick: &[u8], fmt: &[u8], args: &[&[u8]]) -> io::Result<()> {
+        use std::mem;
+
+        let mut msgbuf: [u8; 2048] = unsafe { mem::uninitialized() };
+        let mut outbuf: [u8; 2048] = unsafe { mem::uninitialized() };
+
+        let msg = {
+            let len = sprintf(&mut msgbuf[..], fmt, args);
+            &msgbuf[..len]
+        };
+
+        let mut out = {
+            let len = sprintf(&mut outbuf[..], b":%s NOTICE %s %s\r\n", &[
+                &self.fmt.server[..], nick, msg
+            ]);
+            &outbuf[..len]
+        };
+
+        while out.len() > 0 {
+            let len = try!(self.sock.write(out));
+            out = &out[len..];
+        }
+
+        Ok(())
     }
 }
 

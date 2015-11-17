@@ -16,6 +16,8 @@ use std::io::prelude::*;
 use irc::IRCD;
 use irc::Message;
 use irc::net::IrcStream;
+use irc::numeric::*;
+use irc::output::IrcWriter;
 use run;
 
 struct PendingData {
@@ -46,7 +48,7 @@ pub struct PendingClient {
 // simplifies command invocations
 struct PendingContext<'c> {
     ircd: &'c IRCD,
-    sock: &'c IrcStream,
+    wr: IrcWriter<'c>,
     data: &'c mut PendingData,
 }
 
@@ -84,7 +86,7 @@ impl PendingClient {
 
             let mut ctx = PendingContext {
                 ircd: ircd,
-                sock: sock,
+                wr: ircd.writer(sock),
                 data: data,
             };
 
@@ -167,7 +169,8 @@ impl PendingHandler {
 
 // in a function so we can dedent
 fn handlers(pch: &mut PendingHandler) {
-    pch.add(b"CAP", 1, |_ctx, _m| {
+    pch.add(b"CAP", 1, |ctx, _m| {
+        ctx.wr.numeric(ERR_INVALIDCAPCMD, b"*", &[b"FOO"]);
         info!("capabilities!");
     });
 

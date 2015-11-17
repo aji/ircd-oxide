@@ -15,6 +15,9 @@ pub struct Numeric(u32);
 /// An invalid CAP subcommand was used
 pub const ERR_INVALIDCAPCMD: Numeric = Numeric(410);
 
+/// A command was sent that we don't know about
+pub const ERR_UNKNOWNCOMMAND: Numeric = Numeric(421);
+
 /// No nickname was provided
 pub const ERR_NONICKNAMEGIVEN: Numeric = Numeric(431);
 
@@ -23,6 +26,9 @@ pub const ERR_ERRONEOUSNICKNAME: Numeric = Numeric(432);
 
 /// The requested nickname is in use
 pub const ERR_NICKNAMEINUSE: Numeric = Numeric(433);
+
+/// Not enough parameters
+pub const ERR_NEEDMOREPARAMS: Numeric = Numeric(463);
 
 impl Numeric {
     /// Returns the integer value associated with this `Numeric`
@@ -37,9 +43,11 @@ impl Numeric {
     pub fn string(self) -> &'static str {
         match self {
             ERR_INVALIDCAPCMD => "%s :Invalid CAP subcommand",
+            ERR_UNKNOWNCOMMAND => "%s :Unknown command",
             ERR_NONICKNAMEGIVEN => ":No nickname given",
             ERR_ERRONEOUSNICKNAME => "%s :Invalid nickname",
             ERR_NICKNAMEINUSE => "%s :Nickname is already in use",
+            ERR_NEEDMOREPARAMS => "%s: Not enough parameters",
 
             // not sure what we should do here!
             _ => ":"

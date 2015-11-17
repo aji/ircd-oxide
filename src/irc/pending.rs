@@ -154,14 +154,14 @@ impl PendingHandler {
         match self.handlers.get(m.verb) {
             Some(hdlr) => {
                 if m.args.len() < hdlr.args {
-                    debug!("not enough args!");
+                    ctx.wr.numeric(ERR_NEEDMOREPARAMS, b"*", &[m.verb]);
                 } else {
                     (hdlr.cb)(ctx, m);
                 }
             },
 
             None => {
-                debug!("pending client used unknown command");
+                ctx.wr.numeric(ERR_UNKNOWNCOMMAND, b"*", &[m.verb]);
             }
         }
     }

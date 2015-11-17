@@ -154,14 +154,14 @@ impl PendingHandler {
         match self.handlers.get(m.verb) {
             Some(hdlr) => {
                 if m.args.len() < hdlr.args {
-                    ctx.wr.numeric(ERR_NEEDMOREPARAMS, b"*", &[m.verb]);
+                    ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[m.verb]);
                 } else {
                     (hdlr.cb)(ctx, m);
                 }
             },
 
             None => {
-                ctx.wr.numeric(ERR_UNKNOWNCOMMAND, b"*", &[m.verb]);
+                ctx.wr.numeric(ERR_UNKNOWNCOMMAND, &[m.verb]);
             }
         }
     }
@@ -170,7 +170,7 @@ impl PendingHandler {
 // in a function so we can dedent
 fn handlers(pch: &mut PendingHandler) {
     pch.add(b"CAP", 1, |ctx, _m| {
-        ctx.wr.numeric(ERR_INVALIDCAPCMD, b"*", &[b"FOO"]);
+        ctx.wr.numeric(ERR_INVALIDCAPCMD, &[b"FOO"]);
         info!("capabilities!");
     });
 

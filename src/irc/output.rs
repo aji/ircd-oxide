@@ -31,25 +31,33 @@ impl IrcFormatter {
 
     /// Creates a writer to the given IRC stream that will use this IRC
     /// formatter.
-    pub fn writer<'w, 'fmt, 'sock>(&'fmt self, sock: &'sock IrcStream)
+    pub fn writer<'w, 'fmt, 'sock>(&'fmt self, nick: Option<&'w [u8]>, sock: &'sock IrcStream)
     -> IrcWriter<'w> where 'fmt: 'w, 'sock: 'w {
-        IrcWriter::new(self, sock)
+        IrcWriter {
+            fmt: self,
+            nick: nick,
+            sock: sock
+        }
     }
 }
 
 /// A writer to an IRC stream, derived from an IRC formatter
 pub struct IrcWriter<'w> {
     fmt: &'w IrcFormatter,
+    nick: Option<&'w [u8]>,
     sock: &'w IrcStream,
 }
 
 impl<'w> IrcWriter<'w> {
-    fn new(fmt: &'w IrcFormatter, sock: &'w IrcStream) -> IrcWriter<'w> {
-        IrcWriter { fmt: fmt, sock: sock }
+    fn nick_bytes(&self) -> &[u8] {
+        match self.nick {
+            Some(n) => n,
+            None => b"*",
+        }
     }
 
     /// Sends a numeric to the client
-    pub fn numeric(&self, num: Numeric, nick: &[u8], args: &[&[u8]]) -> io::Result<()> {
+    pub fn numeric(&self, num: Numeric, args: &[&[u8]]) -> io::Result<()> {
         use std::mem;
 
         let mut msgbuf: [u8; 2048] = unsafe { mem::uninitialized() };
@@ -63,7 +71,7 @@ impl<'w> IrcWriter<'w> {
         let mut out = {
             let numstr = format!("{}", num.numeric());
             let len = sprintf(&mut outbuf[..], b":%s %s %s %s\r\n", &[
-                &self.fmt.server[..], numstr.as_bytes(), nick, msg
+                &self.fmt.server[..], numstr.as_bytes(), self.nick_bytes(), msg
             ]);
             &outbuf[..len]
         };
@@ -77,7 +85,7 @@ impl<'w> IrcWriter<'w> {
     }
 
     /// Sends a notice to the client, from the server
-    pub fn snotice(&self, nick: &[u8], fmt: &[u8], args: &[&[u8]]) -> io::Result<()> {
+    pub fn snotice(&self, fmt: &[u8], args: &[&[u8]]) -> io::Result<()> {
         use std::mem;
 
         let mut msgbuf: [u8; 2048] = unsafe { mem::uninitialized() };
@@ -90,7 +98,7 @@ impl<'w> IrcWriter<'w> {
 
         let mut out = {
             let len = sprintf(&mut outbuf[..], b":%s NOTICE %s %s\r\n", &[
-                &self.fmt.server[..], nick, msg
+                &self.fmt.server[..], self.nick_bytes(), msg
             ]);
             &outbuf[..len]
         };

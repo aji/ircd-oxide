@@ -28,6 +28,6 @@ impl IRCD {
     /// Creates an `IrcWriter` for the given `IrcStream`
     pub fn writer<'w, 'ircd, 'sock>(&'ircd self, sock: &'sock IrcStream)
     -> IrcWriter<'w> where 'ircd: 'w, 'sock: 'w {
-        self.fmt.writer(sock)
+        self.fmt.writer(None, sock)
     }
 }

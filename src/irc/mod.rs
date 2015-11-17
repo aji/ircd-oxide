@@ -13,6 +13,8 @@ pub mod linebuf;
 pub mod listen;
 pub mod message;
 pub mod net;
+pub mod numeric;
+pub mod output;
 pub mod pending;
 
 use std::cmp;

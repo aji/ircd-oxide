@@ -15,6 +15,7 @@ use std::io::prelude::*;
 
 use irc::IRCD;
 use irc::Message;
+use irc::client::Client;
 use irc::net::IrcStream;
 use irc::numeric::*;
 use irc::output::IrcWriter;
@@ -36,6 +37,10 @@ impl PendingData {
     fn can_promote(&self) -> bool {
         self.nick.is_some() &&
         self.user.is_some()
+    }
+
+    fn promote(&self, ircd: &IRCD) -> Option<Client> {
+        None
     }
 }
 
@@ -102,10 +107,9 @@ impl PendingClient {
             }
         }));
 
-        if data.can_promote() {
-            Ok(run::Action::DropPeer)
-        } else {
-            Ok(run::Action::Continue)
+        match data.promote(ircd) {
+            Some(c) => Ok(run::Action::Promote(c)),
+            None => Ok(run::Action::Continue),
         }
     }
 }

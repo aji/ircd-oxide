@@ -12,6 +12,9 @@ use irc::global::IRCD;
 use irc::net::IrcStream;
 use irc::Message;
 
+/// An IRC client
+pub struct Client;
+
 // Simplifies comand invocations
 struct ClientContext<'c> {
     ircd: &'c IRCD,

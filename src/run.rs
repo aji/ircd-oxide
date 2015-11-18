@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::io;
 use std::net::ToSocketAddrs;
 
+use irc::client::Client;
 use irc::global::IRCD;
 use irc::listen::Listener;
 use irc::pending::PendingClient;
@@ -37,6 +38,8 @@ pub enum Action {
     DropPeer,
     /// Add a pending client
     AddPending(PendingClient),
+    /// Promote a connection to a regular client
+    Promote(Client),
 }
 
 impl Top {
@@ -145,6 +148,9 @@ impl mio::Handler for Top {
                 if let Err(e) = self.add_pending(pending, ev) {
                     error!("error adding pending client: {}", e);
                 }
+            },
+
+            Action::Promote(_) => {
             },
         }
     }

@@ -3,3 +3,4 @@ target
 *~
 manual/_book
 weechat/
+doc/*.txt

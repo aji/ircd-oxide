@@ -13,9 +13,9 @@ use std::convert::From;
 use std::io;
 use std::io::prelude::*;
 
-use irc::IRCD;
-use irc::Message;
 use irc::client::Client;
+use irc::global::IRCD;
+use irc::message::Message;
 use irc::net::IrcStream;
 use irc::numeric::*;
 use irc::output::IrcWriter;

@@ -19,7 +19,7 @@ use std::io;
 use std::io::prelude::*;
 use std::mem;
 
-use irc::LineBuffer;
+use irc::linebuf::LineBuffer;
 
 /// An IRC stream that can be interacted with through immutable references.
 pub struct IrcStream {

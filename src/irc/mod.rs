@@ -20,11 +20,6 @@ pub mod pending;
 use std::cmp;
 use std::convert::From;
 
-pub use self::cap::ClientCaps;
-pub use self::global::IRCD;
-pub use self::linebuf::LineBuffer;
-pub use self::message::Message;
-
 /// An `IrcString` is a wrapper around a standard Rust `String` that provides
 /// extra functionality for comparison and canonicalization based on the
 /// particular casemapping (ASCII, RFC 1459, etc.) in use.

@@ -13,6 +13,7 @@ use std::io;
 use std::net::ToSocketAddrs;
 
 use irc::client::Client;
+use irc::client::ClientHandler;
 use irc::global::IRCD;
 use irc::listen::Listener;
 use irc::pending::PendingClient;
@@ -23,11 +24,13 @@ pub struct Top {
     ircd: IRCD,
     tokens: HashMap<mio::Token, TokenData>,
     pch: PendingHandler,
+    ch: ClientHandler,
 }
 
 enum TokenData {
     Listener(Listener),
     Pending(PendingClient),
+    Client(Client),
 }
 
 /// An action to be performed by the run loop after handling an event.
@@ -39,7 +42,7 @@ pub enum Action {
     /// Add a pending client
     AddPending(PendingClient),
     /// Promote a connection to a regular client
-    Promote(Client),
+    Promote,
 }
 
 impl Top {
@@ -49,6 +52,7 @@ impl Top {
             ircd: IRCD::new(),
             tokens: HashMap::new(),
             pch: PendingHandler::new(),
+            ch: ClientHandler::new(),
         }
     }
 
@@ -132,6 +136,17 @@ impl mio::Handler for Top {
                         }
                     }
                 },
+
+                TokenData::Client(ref mut client) => {
+                    match client.ready(&self.ircd, &self.ch) {
+                        Ok(action) => action,
+
+                        Err(e) => {
+                            info!("dropping client: {}", e);
+                            Action::DropPeer
+                        }
+                    }
+                },
             }
         };
 
@@ -150,7 +165,25 @@ impl mio::Handler for Top {
                 }
             },
 
-            Action::Promote(_) => {
+            Action::Promote => {
+                if let Some(d) = self.tokens.remove(&tk) {
+                    match d {
+                        TokenData::Pending(pending) => {
+                            if let Some(c) = pending.promote() {
+                                self.tokens.insert(tk, TokenData::Client(c));
+                            } else {
+                                error!("error during promotion");
+                            }
+                        },
+
+                        _ => {
+                            error!("can only Promote Pending");
+                            self.tokens.insert(tk, d);
+                        }
+                    }
+                } else {
+                    warn!("Promote for token {:?} we don't have", tk);
+                }
             },
         }
     }

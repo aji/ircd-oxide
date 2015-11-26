@@ -38,10 +38,6 @@ impl PendingData {
         self.nick.is_some() &&
         self.user.is_some()
     }
-
-    fn promote(&self, ircd: &IRCD) -> Option<Client> {
-        None
-    }
 }
 
 /// Pending client data
@@ -107,10 +103,16 @@ impl PendingClient {
             }
         }));
 
-        match data.promote(ircd) {
-            Some(c) => Ok(run::Action::Promote(c)),
-            None => Ok(run::Action::Continue),
+        if data.can_promote() {
+            Ok(run::Action::Promote)
+        } else {
+            Ok(run::Action::Continue)
         }
+    }
+
+    /// Called to promote a pending client to a full client
+    pub fn promote(self) -> Option<Client> {
+        Some(Client::new(self.sock))
     }
 }
 

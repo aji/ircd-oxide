@@ -7,18 +7,62 @@
 //! Client handling
 
 use std::collections::HashMap;
+use std::io;
 
 use irc::global::IRCD;
 use irc::message::Message;
 use irc::net::IrcStream;
+use irc::numeric::*;
+use irc::output::IrcWriter;
+use run;
 
 /// An IRC client
-pub struct Client;
+pub struct Client {
+    sock: IrcStream
+}
 
 // Simplifies comand invocations
 struct ClientContext<'c> {
     ircd: &'c IRCD,
-    sock: &'c IrcStream,
+    wr: IrcWriter<'c>,
+}
+
+impl Client {
+    /// Wraps an `IrcStream` as a `Client`
+    pub fn new(sock: IrcStream) -> Client {
+        Client { sock: sock }
+    }
+
+    /// Called to indicate data is ready on the client's socket.
+    pub fn ready(&mut self, ircd: &IRCD, ch: &ClientHandler)
+    -> io::Result<run::Action> {
+        let sock = &self.sock;
+
+        if self.sock.empty() {
+            return Ok(run::Action::DropPeer);
+        }
+
+        let _: Option<()> = try!(self.sock.read(|ln| {
+            let m = match Message::parse(ln) {
+                Ok(m) => m,
+                Err(_) => return None,
+            };
+
+            let mut ctx = ClientContext {
+                ircd: ircd,
+                wr: ircd.writer(sock),
+            };
+
+            debug!("--> {}", String::from_utf8_lossy(ln));
+            debug!("    {:?}", m);
+
+            ch.handle(&mut ctx, &m);
+
+            None
+        }));
+
+        Ok(run::Action::Continue)
+    }
 }
 
 // make sure to keep this in sync with the constraint on `ClientHandler::add`.
@@ -73,5 +117,8 @@ impl ClientHandler {
 }
 
 // in a funtion so we can dedent
-fn handlers(_ch: &mut ClientHandler) {
+fn handlers(ch: &mut ClientHandler) {
+    ch.add(b"TEST", 0, |ctx, m| {
+        ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[b"WIDGET"]);
+    });
 }

@@ -15,6 +15,7 @@ use irc::net::IrcStream;
 use irc::numeric::*;
 use irc::output::IrcWriter;
 use run;
+use state::World;
 
 /// An IRC client
 pub struct Client {
@@ -24,6 +25,7 @@ pub struct Client {
 // Simplifies comand invocations
 struct ClientContext<'c> {
     ircd: &'c IRCD,
+    world: &'c World,
     wr: IrcWriter<'c>,
 }
 
@@ -34,7 +36,7 @@ impl Client {
     }
 
     /// Called to indicate data is ready on the client's socket.
-    pub fn ready(&mut self, ircd: &IRCD, ch: &ClientHandler)
+    pub fn ready(&mut self, ircd: &IRCD, world: &mut World, ch: &ClientHandler)
     -> io::Result<run::Action> {
         let sock = &self.sock;
 
@@ -50,6 +52,7 @@ impl Client {
 
             let mut ctx = ClientContext {
                 ircd: ircd,
+                world: world,
                 wr: ircd.writer(sock),
             };
 

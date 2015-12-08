@@ -27,7 +27,6 @@ pub use self::id::IdGenerator;
 pub use self::identity::Identity;
 pub use self::masklist::MaskList;
 pub use self::world::World;
-pub use self::world::Observer;
 
 /// `StateItem` will be implemented by all updatable pieces of global shared
 /// state. The `merge()` operation will be used to perform all updates, and

@@ -18,10 +18,12 @@ use irc::global::IRCD;
 use irc::listen::Listener;
 use irc::pending::PendingClient;
 use irc::pending::PendingHandler;
+use state::World;
 
 /// The top-level IRC server structure
 pub struct Top {
     ircd: IRCD,
+    world: World,
     tokens: HashMap<mio::Token, TokenData>,
     pch: PendingHandler,
     ch: ClientHandler,
@@ -50,6 +52,7 @@ impl Top {
     pub fn new() -> Top {
         Top {
             ircd: IRCD::new(),
+            world: World::new(),
             tokens: HashMap::new(),
             pch: PendingHandler::new(),
             ch: ClientHandler::new(),
@@ -90,6 +93,8 @@ impl mio::Handler for Top {
         _events: mio::EventSet
     ) {
         debug!("event becomes ready");
+
+        let mut next_world: Option<World> = None;
 
         // This function is turning out to be a big mess, but the basic
         // structure is pretty straightforward:
@@ -138,14 +143,20 @@ impl mio::Handler for Top {
                 },
 
                 TokenData::Client(ref mut client) => {
-                    match client.ready(&self.ircd, &self.ch) {
+                    let mut world = self.world.clone();
+
+                    let act = match client.ready(&self.ircd, &mut world, &self.ch) {
                         Ok(action) => action,
 
                         Err(e) => {
                             info!("dropping client: {}", e);
                             Action::DropPeer
                         }
-                    }
+                    };
+
+                    next_world = Some(world);
+
+                    act
                 },
             }
         };
@@ -185,6 +196,11 @@ impl mio::Handler for Top {
                     warn!("Promote for token {:?} we don't have", tk);
                 }
             },
+        }
+
+        if let Some(world) = next_world {
+            info!("world changed!");
+            self.world = world;
         }
     }
 }

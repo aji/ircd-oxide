@@ -25,7 +25,7 @@ pub struct Client {
 // Simplifies comand invocations
 struct ClientContext<'c> {
     ircd: &'c IRCD,
-    world: &'c World,
+    world: &'c mut World,
     wr: IrcWriter<'c>,
 }
 
@@ -123,5 +123,11 @@ impl ClientHandler {
 fn handlers(ch: &mut ClientHandler) {
     ch.add(b"TEST", 0, |ctx, m| {
         ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[b"WIDGET"]);
+    });
+
+    ch.add(b"INC", 0, |ctx, m| {
+        *ctx.world.counter_mut() += 1;
+        let s = format!("{}", *ctx.world.counter());
+        ctx.wr.snotice(b"the counter is now %s", &[s.as_bytes()]);
     });
 }

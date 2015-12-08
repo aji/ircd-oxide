@@ -14,6 +14,7 @@ use state::Id;
 /// The top level struct that contains all conceptually global state.
 #[derive(Clone)]
 pub struct World {
+    counter: usize,
     channels: HashMap<Id<Channel>, Channel>,
 }
 
@@ -21,9 +22,16 @@ impl World {
     /// Creates an empty `World`.
     pub fn new() -> World {
         World {
+            counter: 1,
             channels: HashMap::new(),
         }
     }
+
+    /// Returns a reference to the counter
+    pub fn counter(&self) -> &usize { &self.counter }
+
+    /// Returns a mutable reference to the counter
+    pub fn counter_mut(&mut self) -> &mut usize { &mut self.counter }
 
     /// Returns a reference to the channel map
     pub fn channels(&self) -> &HashMap<Id<Channel>, Channel> { &self.channels }

@@ -22,7 +22,7 @@ pub struct Client {
     sock: IrcStream
 }
 
-// Simplifies comand invocations
+// Simplifies command invocations
 struct ClientContext<'c> {
     ircd: &'c IRCD,
     world: &'c mut World,

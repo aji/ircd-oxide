@@ -96,14 +96,14 @@ impl From<TcpStream> for Client {
 }
 
 // make sure to keep this in sync with the constraint on `ClientHandler::add`.
-struct HandlerFn {
+struct HandlerFn<T> {
     args: usize,
-    cb: Box<for<'c> Fn(&mut ClientContext<'c>, &Message<'c>)>,
+    cb: Box<for<'c> Fn(&mut ClientContext<'c>, T, &Message<'c>)>,
 }
 
 /// A client handler.
 pub struct ClientHandler {
-    handlers: HashMap<Vec<u8>, HandlerFn>,
+    handlers: HashMap<Vec<u8>, HandlerFn<()>>,
 }
 
 impl ClientHandler {
@@ -121,7 +121,7 @@ impl ClientHandler {
     /// Adds a handler function. If a handler is already defined for the given
     /// verb, nothing is added.
     fn add<F>(&mut self, verb: &[u8], args: usize, func: F)
-    where F: 'static + for<'c> Fn(&mut ClientContext<'c>, &Message<'c>) {
+    where F: 'static + for<'c> Fn(&mut ClientContext<'c>, (), &Message<'c>) {
         self.handlers.entry(verb.to_vec()).or_insert_with(|| HandlerFn {
             args: args,
             cb: Box::new(func)
@@ -136,7 +136,7 @@ impl ClientHandler {
                     ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[m.verb]);
                     debug!("not enough args!");
                 } else {
-                    (hdlr.cb)(ctx, m);
+                    (hdlr.cb)(ctx, (), m);
                 }
             },
 
@@ -150,11 +150,11 @@ impl ClientHandler {
 
 // in a funtion so we can dedent
 fn handlers(ch: &mut ClientHandler) {
-    ch.add(b"TEST", 0, |ctx, m| {
+    ch.add(b"TEST", 0, |ctx, _, m| {
         ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[b"WIDGET"]);
     });
 
-    ch.add(b"INC", 0, |ctx, m| {
+    ch.add(b"INC", 0, |ctx, _, m| {
         *ctx.world.counter_mut() += 1;
         let s = format!("{}", *ctx.world.counter());
         ctx.wr.snotice(b"the counter is now %s", &[s.as_bytes()]);

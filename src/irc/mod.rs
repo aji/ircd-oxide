@@ -15,7 +15,6 @@ pub mod message;
 pub mod net;
 pub mod numeric;
 pub mod output;
-pub mod pending;
 
 use std::cmp;
 use std::convert::From;

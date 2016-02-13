@@ -16,8 +16,6 @@ use irc::client::Client;
 use irc::client::ClientHandler;
 use irc::global::IRCD;
 use irc::listen::Listener;
-use irc::pending::PendingClient;
-use irc::pending::PendingHandler;
 use state::World;
 
 /// The top-level IRC server structure
@@ -25,13 +23,11 @@ pub struct Top {
     ircd: IRCD,
     world: World,
     tokens: HashMap<mio::Token, TokenData>,
-    pch: PendingHandler,
     ch: ClientHandler,
 }
 
 enum TokenData {
     Listener(Listener),
-    Pending(PendingClient),
     Client(Client),
 }
 
@@ -41,10 +37,8 @@ pub enum Action {
     Continue,
     /// Drop the peer that handled the event
     DropPeer,
-    /// Add a pending client
-    AddPending(PendingClient),
-    /// Promote a connection to a regular client
-    Promote,
+    /// Add a client
+    AddClient(Client),
 }
 
 impl Top {
@@ -54,7 +48,6 @@ impl Top {
             ircd: IRCD::new(),
             world: World::new(),
             tokens: HashMap::new(),
-            pch: PendingHandler::new(),
             ch: ClientHandler::new(),
         }
     }
@@ -70,14 +63,14 @@ impl Top {
         Ok(())
     }
 
-    fn add_pending(
+    fn add_client(
         &mut self,
-        pending: PendingClient,
+        client: Client,
         ev: &mut mio::EventLoop<Top>
     ) -> io::Result<()> {
         let token = mio::Token(random());
-        try!(pending.register(token, ev));
-        self.tokens.insert(token, TokenData::Pending(pending));
+        try!(client.register(token, ev));
+        self.tokens.insert(token, TokenData::Client(client));
         Ok(())
     }
 }
@@ -122,22 +115,11 @@ impl mio::Handler for Top {
                     debug!("accepting new incoming connection");
 
                     match listener.accept() {
-                        Ok(p) => Action::AddPending(p),
+                        Ok(client) => Action::AddClient(client),
 
                         Err(e) => {
                             error!("accepting client: {}", e);
                             Action::Continue
-                        }
-                    }
-                },
-
-                TokenData::Pending(ref mut pending) => {
-                    match pending.ready(&self.ircd, &self.pch) {
-                        Ok(action) => action,
-
-                        Err(e) => {
-                            info!("dropping pending client: {}", e);
-                            Action::DropPeer
                         }
                     }
                 },
@@ -170,30 +152,9 @@ impl mio::Handler for Top {
                 }
             },
 
-            Action::AddPending(pending) => {
-                if let Err(e) = self.add_pending(pending, ev) {
-                    error!("error adding pending client: {}", e);
-                }
-            },
-
-            Action::Promote => {
-                if let Some(d) = self.tokens.remove(&tk) {
-                    match d {
-                        TokenData::Pending(pending) => {
-                            if let Some(c) = pending.promote() {
-                                self.tokens.insert(tk, TokenData::Client(c));
-                            } else {
-                                error!("error during promotion");
-                            }
-                        },
-
-                        _ => {
-                            error!("can only Promote Pending");
-                            self.tokens.insert(tk, d);
-                        }
-                    }
-                } else {
-                    warn!("Promote for token {:?} we don't have", tk);
+            Action::AddClient(client) => {
+                if let Err(e) = self.add_client(client, ev) {
+                    error!("error adding client: {}", e);
                 }
             },
         }

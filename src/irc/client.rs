@@ -6,6 +6,8 @@
 
 //! Client handling
 
+use mio;
+use mio::tcp::TcpStream;
 use std::collections::HashMap;
 use std::io;
 
@@ -19,8 +21,18 @@ use state::World;
 
 /// An IRC client
 pub struct Client {
-    sock: IrcStream
+    sock: IrcStream,
+    state: ClientState,
 }
+
+enum ClientState {
+    Pending(PendingData),
+    Active(ActiveData),
+}
+
+struct PendingData;
+
+struct ActiveData;
 
 // Simplifies command invocations
 struct ClientContext<'c> {
@@ -30,9 +42,18 @@ struct ClientContext<'c> {
 }
 
 impl Client {
-    /// Wraps an `IrcStream` as a `Client`
-    pub fn new(sock: IrcStream) -> Client {
-        Client { sock: sock }
+    /// Wraps an `TcpStream` as a `Client`
+    pub fn new(sock: TcpStream) -> Client {
+        Client {
+            sock: IrcStream::new(sock),
+            state: ClientState::Pending(PendingData),
+        }
+    }
+
+    /// Registers the `Client` with the given `EventLoop`
+    pub fn register<H>(&self, tok: mio::Token, ev: &mut mio::EventLoop<H>)
+    -> io::Result<()> where H: mio::Handler {
+        self.sock.register(tok, ev)
     }
 
     /// Called to indicate data is ready on the client's socket.
@@ -65,6 +86,12 @@ impl Client {
         }));
 
         Ok(run::Action::Continue)
+    }
+}
+
+impl From<TcpStream> for Client {
+    fn from(s: TcpStream) -> Client {
+        Client::new(s)
     }
 }
 
@@ -106,6 +133,7 @@ impl ClientHandler {
         match self.handlers.get(m.verb) {
             Some(hdlr) => {
                 if m.args.len() < hdlr.args {
+                    ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[m.verb]);
                     debug!("not enough args!");
                 } else {
                     (hdlr.cb)(ctx, m);
@@ -113,6 +141,7 @@ impl ClientHandler {
             },
 
             None => {
+                ctx.wr.numeric(ERR_UNKNOWNCOMMAND, &[m.verb]);
                 debug!("client used unknown command");
             }
         }

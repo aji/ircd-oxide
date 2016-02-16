@@ -10,6 +10,7 @@ use mio;
 use mio::tcp::TcpStream;
 use std::collections::HashMap;
 use std::io;
+use take_mut;
 
 use irc::global::IRCD;
 use irc::message::Message;
@@ -81,12 +82,16 @@ impl Client {
             debug!("--> {}", String::from_utf8_lossy(ln));
             debug!("    {:?}", m);
 
-            match *state {
-                ClientState::Pending(ref mut data) =>
-                    ch.pending.handle(&mut ctx, data, &m),
-                ClientState::Active(ref mut data) =>
-                    ch.active.handle(&mut ctx, data, &m),
-            }
+            take_mut::take(state, |state| match state {
+                ClientState::Pending(mut data) => {
+                    ch.pending.handle(&mut ctx, &mut data, &m);
+                    ClientState::Active(ActiveData)
+                },
+                ClientState::Active(mut data) => {
+                    ch.active.handle(&mut ctx, &mut data, &m);
+                    ClientState::Pending(PendingData)
+                },
+            });
 
             None
         }));

@@ -13,6 +13,7 @@
 
 extern crate mio;
 extern crate rand;
+extern crate take_mut;
 extern crate time;
 
 #[macro_use]

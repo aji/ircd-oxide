@@ -194,6 +194,7 @@ impl Runner {
                 Some(addr) => addr,
                 None => panic!("help!"),
             };
+            debug!("listening on {:?}", addr);
             try!(mio::tcp::TcpListener::bind(&addr))
         };
 

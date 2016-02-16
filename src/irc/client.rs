@@ -82,14 +82,16 @@ impl Client {
             debug!("--> {}", String::from_utf8_lossy(ln));
             debug!("    {:?}", m);
 
+            // take_mut::take() will *exit* on panic, so no panics!
             take_mut::take(state, |state| match state {
                 ClientState::Pending(mut data) => {
                     ch.pending.handle(&mut ctx, &mut data, &m);
-                    ClientState::Active(ActiveData)
+                    try_promote(&mut ctx, data)
                 },
+
                 ClientState::Active(mut data) => {
                     ch.active.handle(&mut ctx, &mut data, &m);
-                    ClientState::Pending(PendingData)
+                    ClientState::Active(data)
                 },
             });
 
@@ -180,4 +182,9 @@ fn handlers(ch: &mut ClientHandler) {
         let s = format!("{}", *ctx.world.counter());
         ctx.wr.snotice(b"the counter is now %s", &[s.as_bytes()]);
     });
+}
+
+fn try_promote<'c>(ctx: &mut ClientContext<'c>, data: PendingData) -> ClientState {
+    // TODO: this
+    ClientState::Pending(data)
 }

@@ -60,6 +60,7 @@ impl Client {
     pub fn ready(&mut self, ircd: &IRCD, world: &mut World, ch: &ClientHandler)
     -> io::Result<run::Action> {
         let sock = &self.sock;
+        let state = &mut self.state;
 
         if self.sock.empty() {
             return Ok(run::Action::DropPeer);
@@ -80,7 +81,12 @@ impl Client {
             debug!("--> {}", String::from_utf8_lossy(ln));
             debug!("    {:?}", m);
 
-            ch.handle(&mut ctx, &m);
+            match *state {
+                ClientState::Pending(ref mut data) =>
+                    ch.pending.handle(&mut ctx, data, &m),
+                ClientState::Active(ref mut data) =>
+                    ch.active.handle(&mut ctx, data, &m),
+            }
 
             None
         }));
@@ -95,48 +101,38 @@ impl From<TcpStream> for Client {
     }
 }
 
-// make sure to keep this in sync with the constraint on `ClientHandler::add`.
 struct HandlerFn<T> {
     args: usize,
-    cb: Box<for<'c> Fn(&mut ClientContext<'c>, T, &Message<'c>)>,
+    cb: Box<for<'c> Fn(&mut ClientContext<'c>, &mut T, &Message<'c>)>,
 }
 
-/// A client handler.
-pub struct ClientHandler {
-    handlers: HashMap<Vec<u8>, HandlerFn<()>>,
+struct HandlerSet<T> {
+    handlers: HashMap<Vec<u8>, HandlerFn<T>>
 }
 
-impl ClientHandler {
-    /// Creates a new client handling structure.
-    pub fn new() -> ClientHandler {
-        let mut ch = ClientHandler {
-            handlers: HashMap::new(),
-        };
-
-        handlers(&mut ch);
-
-        ch
+impl<T> HandlerSet<T> {
+    fn new() -> HandlerSet<T> {
+        HandlerSet { handlers: HashMap::new() }
     }
 
-    /// Adds a handler function. If a handler is already defined for the given
-    /// verb, nothing is added.
     fn add<F>(&mut self, verb: &[u8], args: usize, func: F)
-    where F: 'static + for<'c> Fn(&mut ClientContext<'c>, (), &Message<'c>) {
-        self.handlers.entry(verb.to_vec()).or_insert_with(|| HandlerFn {
-            args: args,
-            cb: Box::new(func)
-        });
+    where F: 'static + for<'c> Fn(&mut ClientContext<'c>, &mut T, &Message<'c>) {
+        self.handlers
+            .entry(verb.to_vec())
+            .or_insert_with(|| HandlerFn {
+                args: args,
+                cb: Box::new(func)
+            });
     }
 
-    /// Handles a message from a client.
-    fn handle<'c>(&self, ctx: &mut ClientContext<'c>, m: &Message<'c>) {
+    fn handle<'c>(&self, ctx: &mut ClientContext<'c>, data: &mut T, m: &Message<'c>) {
         match self.handlers.get(m.verb) {
             Some(hdlr) => {
                 if m.args.len() < hdlr.args {
                     ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[m.verb]);
                     debug!("not enough args!");
                 } else {
-                    (hdlr.cb)(ctx, (), m);
+                    (hdlr.cb)(ctx, data, m);
                 }
             },
 
@@ -148,13 +144,33 @@ impl ClientHandler {
     }
 }
 
+/// A client handler.
+pub struct ClientHandler {
+    pending: HandlerSet<PendingData>,
+    active: HandlerSet<ActiveData>,
+}
+
+impl ClientHandler {
+    /// Creates a new client handling structure.
+    pub fn new() -> ClientHandler {
+        let mut ch = ClientHandler {
+            pending: HandlerSet::new(),
+            active: HandlerSet::new(),
+        };
+
+        handlers(&mut ch);
+
+        ch
+    }
+}
+
 // in a funtion so we can dedent
 fn handlers(ch: &mut ClientHandler) {
-    ch.add(b"TEST", 0, |ctx, _, m| {
+    ch.pending.add(b"TEST", 0, |ctx, _, m| {
         ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[b"WIDGET"]);
     });
 
-    ch.add(b"INC", 0, |ctx, _, m| {
+    ch.active.add(b"INC", 0, |ctx, _, m| {
         *ctx.world.counter_mut() += 1;
         let s = format!("{}", *ctx.world.counter());
         ctx.wr.snotice(b"the counter is now %s", &[s.as_bytes()]);

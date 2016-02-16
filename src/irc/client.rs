@@ -31,12 +31,17 @@ enum ClientState {
     Active(ActiveData),
 }
 
-struct PendingData;
+struct PendingData {
+    password: Option<Vec<u8>>,
+    nickname: Option<Vec<u8>>,
+    username: Option<Vec<u8>>,
+    realname: Option<Vec<u8>>,
+}
 
 struct ActiveData;
 
-// Simplifies command invocations
-struct ClientContext<'c> {
+// Simplifies handler invocations
+struct HandlerExtras<'c> {
     ircd: &'c IRCD,
     world: &'c mut World,
     wr: IrcWriter<'c>,
@@ -47,7 +52,7 @@ impl Client {
     pub fn new(sock: TcpStream) -> Client {
         Client {
             sock: IrcStream::new(sock),
-            state: ClientState::Pending(PendingData),
+            state: ClientState::Pending(PendingData::new()),
         }
     }
 
@@ -73,7 +78,7 @@ impl Client {
                 Err(_) => return None,
             };
 
-            let mut ctx = ClientContext {
+            let mut ctx = HandlerExtras {
                 ircd: ircd,
                 world: world,
                 wr: ircd.writer(sock),
@@ -108,9 +113,20 @@ impl From<TcpStream> for Client {
     }
 }
 
+impl PendingData {
+    fn new() -> PendingData {
+        PendingData {
+            password: None,
+            nickname: None,
+            username: None,
+            realname: None,
+        }
+    }
+}
+
 struct HandlerFn<T> {
     args: usize,
-    cb: Box<for<'c> Fn(&mut ClientContext<'c>, &mut T, &Message<'c>)>,
+    cb: Box<for<'c> Fn(&mut HandlerExtras<'c>, &mut T, &Message<'c>)>,
 }
 
 struct HandlerSet<T> {
@@ -123,7 +139,7 @@ impl<T> HandlerSet<T> {
     }
 
     fn add<F>(&mut self, verb: &[u8], args: usize, func: F)
-    where F: 'static + for<'c> Fn(&mut ClientContext<'c>, &mut T, &Message<'c>) {
+    where F: 'static + for<'c> Fn(&mut HandlerExtras<'c>, &mut T, &Message<'c>) {
         self.handlers
             .entry(verb.to_vec())
             .or_insert_with(|| HandlerFn {
@@ -132,7 +148,7 @@ impl<T> HandlerSet<T> {
             });
     }
 
-    fn handle<'c>(&self, ctx: &mut ClientContext<'c>, data: &mut T, m: &Message<'c>) {
+    fn handle<'c>(&self, ctx: &mut HandlerExtras<'c>, data: &mut T, m: &Message<'c>) {
         match self.handlers.get(m.verb) {
             Some(hdlr) => {
                 if m.args.len() < hdlr.args {
@@ -173,18 +189,62 @@ impl ClientHandler {
 
 // in a funtion so we can dedent
 fn handlers(ch: &mut ClientHandler) {
-    ch.pending.add(b"TEST", 0, |ctx, _, m| {
+    ch.pending.add(b"PASS", 1, |_ctx, data, m| {
+        data.password = Some(m.args[0].to_vec());
+    });
+
+    ch.pending.add(b"NICK", 1, |_ctx, data, m| {
+        data.nickname = Some(m.args[0].to_vec());
+    });
+
+    ch.pending.add(b"USER", 4, |_ctx, data, m| {
+        data.username = Some(m.args[0].to_vec());
+        data.realname = Some(m.args[3].to_vec());
+    });
+
+    ch.pending.add(b"TEST", 0, |ctx, _, _m| {
         ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[b"WIDGET"]);
     });
 
-    ch.active.add(b"INC", 0, |ctx, _, m| {
+    ch.active.add(b"INC", 0, |ctx, _, _m| {
         *ctx.world.counter_mut() += 1;
         let s = format!("{}", *ctx.world.counter());
         ctx.wr.snotice(b"the counter is now %s", &[s.as_bytes()]);
     });
 }
 
-fn try_promote<'c>(ctx: &mut ClientContext<'c>, data: PendingData) -> ClientState {
-    // TODO: this
-    ClientState::Pending(data)
+struct Promotion {
+    password: Vec<u8>,
+    nickname: Vec<u8>,
+    username: Vec<u8>,
+    realname: Vec<u8>,
+}
+
+impl Promotion {
+    fn from_pending(data: PendingData) -> Result<Promotion, PendingData> {
+        if data.password.is_none() || data.nickname.is_none() ||
+                data.username.is_none() || data.realname.is_none() {
+            Err(data)
+        } else {
+            Ok(Promotion {
+                password: data.password.unwrap(),
+                nickname: data.nickname.unwrap(),
+                username: data.username.unwrap(),
+                realname: data.realname.unwrap(),
+            })
+        }
+    }
+}
+
+fn try_promote<'c>(ctx: &mut HandlerExtras<'c>, data: PendingData) -> ClientState {
+    let promotion = match Promotion::from_pending(data) {
+        Ok(promotion) => promotion,
+        Err(data) => {
+            // user is missing something
+            return ClientState::Pending(data);
+        }
+    };
+
+    ctx.wr.snotice(b"welcome!", &[]);
+    ClientState::Active(ActiveData)
 }

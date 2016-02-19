@@ -18,6 +18,8 @@ use irc::net::IrcStream;
 use irc::numeric::*;
 use irc::output::IrcWriter;
 use run;
+use state::Id;
+use state::Identity;
 use state::World;
 
 /// An IRC client
@@ -38,7 +40,9 @@ struct PendingData {
     realname: Option<Vec<u8>>,
 }
 
-struct ActiveData;
+struct ActiveData {
+    identity: Id<Identity>,
+}
 
 // Simplifies handler invocations
 struct HandlerExtras<'c> {
@@ -201,16 +205,6 @@ fn handlers(ch: &mut ClientHandler) {
         data.username = Some(m.args[0].to_vec());
         data.realname = Some(m.args[3].to_vec());
     });
-
-    ch.pending.add(b"TEST", 0, |ctx, _, _m| {
-        ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[b"WIDGET"]);
-    });
-
-    ch.active.add(b"INC", 0, |ctx, _, _m| {
-        *ctx.world.counter_mut() += 1;
-        let s = format!("{}", *ctx.world.counter());
-        ctx.wr.snotice(b"the counter is now %s", &[s.as_bytes()]);
-    });
 }
 
 struct Promotion {
@@ -237,6 +231,7 @@ impl Promotion {
 }
 
 fn try_promote<'c>(ctx: &mut HandlerExtras<'c>, data: PendingData) -> ClientState {
+    /*
     let promotion = match Promotion::from_pending(data) {
         Ok(promotion) => promotion,
         Err(data) => {
@@ -247,4 +242,6 @@ fn try_promote<'c>(ctx: &mut HandlerExtras<'c>, data: PendingData) -> ClientStat
 
     ctx.wr.snotice(b"welcome!", &[]);
     ClientState::Active(ActiveData)
+    */
+    ClientState::Pending(data)
 }

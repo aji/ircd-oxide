@@ -25,6 +25,7 @@ pub use self::diff::Differ;
 pub use self::id::Id;
 pub use self::id::IdGenerator;
 pub use self::identity::Identity;
+pub use self::identity::IdentitySet;
 pub use self::masklist::MaskList;
 pub use self::world::World;
 

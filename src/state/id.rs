@@ -6,6 +6,7 @@
 
 //! Unique identifier strings
 
+use std::cell;
 use std::clone;
 use std::cmp;
 use std::fmt;
@@ -31,6 +32,11 @@ use common::Sid;
 pub struct Id<Namespace: 'static> {
     id: String,
     _ns: PhantomData<&'static mut Namespace>
+}
+
+impl<Namespace> Id<Namespace> {
+    /// Returns a byte array for this `Id`
+    pub fn as_bytes(&self) -> &[u8] { self.id.as_bytes() }
 }
 
 impl<Namespace> fmt::Debug for Id<Namespace> {
@@ -65,7 +71,7 @@ impl<Namespace> Hash for Id<Namespace> {
 /// an `IdGenerator<Foo>` cannot generate an `Id<Bar>`.
 pub struct IdGenerator<Namespace: 'static> {
     sid: Sid,
-    next: u64,
+    next: cell::Cell<u64>,
     _ns: PhantomData<&'static mut Namespace>
 }
 
@@ -74,15 +80,15 @@ impl<Namespace> IdGenerator<Namespace> {
     pub fn new(sid: Sid) -> IdGenerator<Namespace> {
         IdGenerator {
             sid: sid,
-            next: 0,
+            next: cell::Cell::new(0),
             _ns: PhantomData,
         }
     }
 
     /// Generates the next `Id`
-    pub fn next(&mut self) -> Id<Namespace> {
-        let id = self.next;
-        self.next += 1;
+    pub fn next(&self) -> Id<Namespace> {
+        let id = self.next.get();
+        self.next.set(id + 1);
 
         Id {
             id: format!("{}:{}", self.sid, id),
@@ -99,8 +105,8 @@ struct Bar;
 
 #[test]
 fn test_types_ok() {
-    let mut fooid: IdGenerator<Foo> = IdGenerator::new(Sid::identity());
-    let mut barid: IdGenerator<Bar> = IdGenerator::new(Sid::identity());
+    let fooid: IdGenerator<Foo> = IdGenerator::new(Sid::identity());
+    let barid: IdGenerator<Bar> = IdGenerator::new(Sid::identity());
 
     let _: Id<Foo> = fooid.next();
     let _: Id<Bar> = barid.next();

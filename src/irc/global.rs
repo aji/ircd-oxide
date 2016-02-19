@@ -10,19 +10,33 @@
 //! they're structures that many parts of the IRC handling infrastructure need
 //! access to, and so we pass them around.
 
+use common::Sid;
 use irc::output::IrcFormatter;
 use irc::output::IrcWriter;
 use irc::net::IrcStream;
+use state;
 
 /// The top level IRC server type
 pub struct IRCD {
     fmt: IrcFormatter,
+
+    /// The `Sid` for this IRCD instance
+    pub sid: Sid,
+    /// An `IdGenerator` instance for `Identity`
+    pub idgen_identity: state::IdGenerator<state::Identity>,
 }
 
 impl IRCD {
     /// Creates a new `IRCD`
     pub fn new() -> IRCD {
-        IRCD { fmt: IrcFormatter::new(b"oxide.irc") }
+        let sid = Sid::new("OXY");
+
+        IRCD {
+            fmt: IrcFormatter::new(b"oxide.irc"),
+
+            sid: sid.clone(),
+            idgen_identity: state::IdGenerator::new(sid.clone()),
+        }
     }
 
     /// Creates an `IrcWriter` for the given `IrcStream`

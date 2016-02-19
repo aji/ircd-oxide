@@ -26,4 +26,9 @@ impl World {
             identities: IdentitySet::new(),
         }
     }
+
+    /// Forwards to `IdentitySet::create_temp_identity`
+    pub fn create_temp_identity(&mut self, id: Id<Identity>) {
+        self.identities.create_temp_identity(id)
+    }
 }

@@ -231,7 +231,6 @@ impl Promotion {
 }
 
 fn try_promote<'c>(ctx: &mut HandlerExtras<'c>, data: PendingData) -> ClientState {
-    /*
     let promotion = match Promotion::from_pending(data) {
         Ok(promotion) => promotion,
         Err(data) => {
@@ -240,8 +239,11 @@ fn try_promote<'c>(ctx: &mut HandlerExtras<'c>, data: PendingData) -> ClientStat
         }
     };
 
-    ctx.wr.snotice(b"welcome!", &[]);
-    ClientState::Active(ActiveData)
-    */
-    ClientState::Pending(data)
+    let identity = ctx.ircd.idgen_identity.next();
+    ctx.world.create_temp_identity(identity.clone());
+
+    ctx.wr.snotice(b"welcome, %s!", &[identity.as_bytes()]);
+    ClientState::Active(ActiveData {
+        identity: identity,
+    })
 }

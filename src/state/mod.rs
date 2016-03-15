@@ -17,7 +17,6 @@ pub mod world;
 
 pub use self::channel::Channel;
 pub use self::claim::Claim;
-pub use self::claim::ClaimMap;
 pub use self::clock::Clock;
 pub use self::clock::Clocked;
 pub use self::diff::Diffable;

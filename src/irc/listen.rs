@@ -28,7 +28,7 @@ impl Listener {
     /// Registers the `Listener` with the given mio `EventLoop`
     pub fn register<H>(&self, tok: mio::Token, ev: &mut mio::EventLoop<H>)
     -> io::Result<()> where H: mio::Handler {
-        ev.register_opt(
+        ev.register(
             &self.sock,
             tok,
             mio::EventSet::readable(),
@@ -42,7 +42,7 @@ impl Listener {
         let sock = {
             let sock = try!(self.sock.accept());
             // TODO: don't expect, maybe?
-            sock.expect("accept failed (would block")
+            sock.expect("accept failed (would block)").0
         };
 
         Ok(S::from(sock))

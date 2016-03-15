@@ -41,7 +41,7 @@ impl IrcStream {
     /// Registers the `IrcStream` with the given `EventLoop`
     pub fn register<H>(&self, tok: mio::Token, ev: &mut mio::EventLoop<H>)
     -> io::Result<()> where H: mio::Handler {
-        ev.register_opt(
+        ev.register(
             &*self.sock.borrow(),
             tok,
             mio::EventSet::readable(),

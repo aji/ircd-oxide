@@ -19,7 +19,7 @@ use std::str::FromStr;
 #[allow(dead_code)]
 mod cap {
     bitflags! {
-        flags Caps: u16 {
+        pub flags Caps: u16 {
             const MULTI_PREFIX       = 0b_00000000_00000001,
             const ACCOUNT_NOTIFY     = 0b_00000000_00000010,
             const AWAY_NOTIFY        = 0b_00000000_00000100,

@@ -12,6 +12,12 @@
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct Numeric(u32);
 
+/// Welcoming the client to the network
+pub const RPL_WELCOME: Numeric = Numeric(001);
+
+/// Used by the IRCD to communicate capabilities to the client
+pub const RPL_ISUPPORT: Numeric = Numeric(005);
+
 /// An invalid CAP subcommand was used
 pub const ERR_INVALIDCAPCMD: Numeric = Numeric(410);
 
@@ -42,6 +48,9 @@ impl Numeric {
     /// processing.
     pub fn string(self) -> &'static str {
         match self {
+            RPL_WELCOME => ":Welcome!",
+            RPL_ISUPPORT => "%s :are supported by this server",
+
             ERR_INVALIDCAPCMD => "%s :Invalid CAP subcommand",
             ERR_UNKNOWNCOMMAND => "%s :Unknown command",
             ERR_NONICKNAMEGIVEN => ":No nickname given",

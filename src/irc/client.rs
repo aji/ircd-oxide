@@ -242,7 +242,9 @@ fn try_promote<'c>(ctx: &mut HandlerExtras<'c>, data: PendingData) -> ClientStat
     let identity = ctx.ircd.idgen_identity.next();
     ctx.world.create_temp_identity(identity.clone());
 
-    ctx.wr.snotice(b"welcome, %s!", &[identity.as_bytes()]);
+    ctx.wr.numeric(RPL_WELCOME, &[]);
+    ctx.wr.numeric(RPL_ISUPPORT, &[b"CHANTYPES=#"]);
+
     ClientState::Active(ActiveData {
         identity: identity,
     })

@@ -69,7 +69,7 @@ impl<'w> IrcWriter<'w> {
         };
 
         let mut out = {
-            let numstr = format!("{}", num.numeric());
+            let numstr = format!("{:03}", num.numeric());
             let len = sprintf(&mut outbuf[..], b":%s %s %s %s\r\n", &[
                 &self.fmt.server[..], numstr.as_bytes(), self.nick_bytes(), msg
             ]);

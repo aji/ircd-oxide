@@ -20,7 +20,7 @@ use irc::output::IrcWriter;
 use run;
 use state::Id;
 use state::Identity;
-use state::World;
+use state::WorldView;
 
 /// An IRC client
 pub struct Client {
@@ -47,7 +47,7 @@ struct ActiveData {
 // Simplifies handler invocations
 struct HandlerExtras<'c> {
     ircd: &'c IRCD,
-    world: &'c mut World,
+    world: &'c mut WorldView,
     wr: IrcWriter<'c>,
 }
 
@@ -67,7 +67,7 @@ impl Client {
     }
 
     /// Called to indicate data is ready on the client's socket.
-    pub fn ready(&mut self, ircd: &IRCD, world: &mut World, ch: &ClientHandler)
+    pub fn ready(&mut self, ircd: &IRCD, world: &mut WorldView, ch: &ClientHandler)
     -> io::Result<run::Action> {
         let sock = &self.sock;
         let state = &mut self.state;

@@ -125,9 +125,7 @@ impl mio::Handler for Top {
                 },
 
                 TokenData::Client(ref mut client) => {
-                    let mut world = self.world.clone();
-
-                    let act = match client.ready(&self.ircd, &mut world, &self.ch) {
+                    let act = match client.ready(&self.ircd, &mut self.world, &self.ch) {
                         Ok(action) => action,
 
                         Err(e) => {
@@ -135,8 +133,6 @@ impl mio::Handler for Top {
                             Action::DropPeer
                         }
                     };
-
-                    next_world = Some(world);
 
                     act
                 },
@@ -157,11 +153,6 @@ impl mio::Handler for Top {
                     error!("error adding client: {}", e);
                 }
             },
-        }
-
-        if let Some(world) = next_world {
-            info!("world changed!");
-            self.world = world;
         }
     }
 }

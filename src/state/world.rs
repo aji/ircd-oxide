@@ -13,6 +13,12 @@ use state::Id;
 use state::Identity;
 use state::IdentitySet;
 
+/// A trait that defines operations a world-changer can perform
+pub trait WorldView {
+    /// Creates a temporary identity with the given ID
+    fn create_temp_identity(&mut self, id: Id<Identity>);
+}
+
 /// The top level struct that contains all conceptually global state.
 #[derive(Clone)]
 pub struct World {
@@ -26,9 +32,10 @@ impl World {
             identities: IdentitySet::new(),
         }
     }
+}
 
-    /// Forwards to `IdentitySet::create_temp_identity`
-    pub fn create_temp_identity(&mut self, id: Id<Identity>) {
+impl WorldView for World {
+    fn create_temp_identity(&mut self, id: Id<Identity>) {
         self.identities.create_temp_identity(id)
     }
 }

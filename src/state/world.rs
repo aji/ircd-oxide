@@ -20,7 +20,6 @@ pub trait WorldView {
 }
 
 /// The top level struct that contains all conceptually global state.
-#[derive(Clone)]
 pub struct World {
     identities: IdentitySet,
 }
@@ -32,10 +31,20 @@ impl World {
             identities: IdentitySet::new(),
         }
     }
+
+    // Returns a reference to the world that can be used to make changes.
+    pub fn editor(&mut self) -> WorldGuard {
+        WorldGuard { world: self }
+    }
 }
 
-impl WorldView for World {
+/// A struct for making changes to a World. Changes are tracked
+pub struct WorldGuard<'w> {
+    world: &'w mut World,
+}
+
+impl<'w> WorldView for WorldGuard<'w> {
     fn create_temp_identity(&mut self, id: Id<Identity>) {
-        self.identities.create_temp_identity(id)
+        self.world.identities.create_temp_identity(id)
     }
 }

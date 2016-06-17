@@ -125,7 +125,9 @@ impl mio::Handler for Top {
                 },
 
                 TokenData::Client(ref mut client) => {
-                    let act = match client.ready(&self.ircd, &mut self.world, &self.ch) {
+                    let mut editor = self.world.editor();
+
+                    let act = match client.ready(&self.ircd, &mut editor, &self.ch) {
                         Ok(action) => action,
 
                         Err(e) => {

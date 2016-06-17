@@ -22,20 +22,14 @@ pub struct IRCD {
 
     /// The `Sid` for this IRCD instance
     pub sid: Sid,
-    /// An `IdGenerator` instance for `Identity`
-    pub idgen_identity: state::IdGenerator<state::Identity>,
 }
 
 impl IRCD {
     /// Creates a new `IRCD`
     pub fn new() -> IRCD {
-        let sid = Sid::new("OXY");
-
         IRCD {
             fmt: IrcFormatter::new(b"oxide.irc"),
-
-            sid: sid.clone(),
-            idgen_identity: state::IdGenerator::new(sid.clone()),
+            sid: Sid::new("OXY")
         }
     }
 

@@ -239,8 +239,7 @@ fn try_promote<'c>(ctx: &mut HandlerExtras<'c>, data: PendingData) -> ClientStat
         }
     };
 
-    let identity = ctx.ircd.idgen_identity.next();
-    ctx.world.create_temp_identity(identity.clone());
+    let identity = ctx.world.create_temp_identity();
 
     ctx.wr.numeric(RPL_WELCOME, &[]);
     ctx.wr.numeric(RPL_ISUPPORT, &[b"CHANTYPES=#"]);

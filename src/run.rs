@@ -44,9 +44,12 @@ pub enum Action {
 impl Top {
     /// Creates a new `Top`
     pub fn new() -> Top {
+        let ircd = IRCD::new();
+        let world = World::new(ircd.sid.clone());
+
         Top {
-            ircd: IRCD::new(),
-            world: World::new(),
+            ircd: ircd,
+            world: world,
             tokens: HashMap::new(),
             ch: ClientHandler::new(),
         }

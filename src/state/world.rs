@@ -12,8 +12,8 @@ use common::Sid;
 use state::Channel;
 use state::Id;
 use state::IdGenerator;
+use state::IdMap;
 use state::Identity;
-use state::IdentitySet;
 
 /// A trait that defines operations a world-changer can perform
 pub trait WorldView {
@@ -24,7 +24,7 @@ pub trait WorldView {
 /// The top level struct that contains all conceptually global state.
 pub struct World {
     // strictly global:
-    identities: IdentitySet,
+    identities: IdMap<Identity>,
 
     // strictly local:
     sid: Sid,
@@ -35,14 +35,15 @@ impl World {
     /// Creates an empty `World` with the given server ID
     pub fn new(sid: Sid) -> World {
         World {
+            identities: IdMap::new(),
+
             sid: sid.clone(),
-            identities: IdentitySet::new(),
             idgen_identity: IdGenerator::new(sid.clone()),
         }
     }
 
-    // Returns a reference to the world that can be used to make changes.
-    pub fn editor(&mut self) -> WorldGuard {
+    /// Returns a reference to the world that can be used to make changes.
+    pub fn editor<'w>(&'w mut self) -> WorldGuard<'w> {
         WorldGuard { world: self }
     }
 }
@@ -55,7 +56,8 @@ pub struct WorldGuard<'w> {
 impl<'w> WorldView for WorldGuard<'w> {
     fn create_temp_identity(&mut self) -> Id<Identity> {
         let id = self.world.idgen_identity.next();
-        self.world.identities.create_temp_identity(id.clone());
+        let identity = Identity::new(id.clone(), true);
+        self.world.identities.insert(id.clone(), identity);
         id
     }
 }

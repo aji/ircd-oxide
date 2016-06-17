@@ -47,29 +47,3 @@ impl Identity {
         self.temporary
     }
 }
-
-/// A set of identities
-#[derive(Clone)]
-pub struct IdentitySet {
-    identities: HashMap<Id<Identity>, Identity>,
-}
-
-impl IdentitySet {
-    /// Creates an empty identity set
-    pub fn new() -> IdentitySet {
-        IdentitySet {
-            identities: HashMap::new(),
-        }
-    }
-
-    /// Gets an `Identity` given its `Id`.
-    pub fn get(&self, id: &Id<Identity>) -> Option<&Identity> {
-        self.identities.get(id)
-    }
-
-    /// Creates a new temporary `Identity`
-    pub fn create_temp_identity(&mut self, id: Id<Identity>) {
-        let identity = Identity::new(id.clone(), true);
-        self.identities.insert(id, identity);
-    }
-}

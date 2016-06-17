@@ -8,6 +8,7 @@
 
 use std::cell;
 use std::clone;
+use std::collections;
 use std::cmp;
 use std::fmt;
 use std::hash;
@@ -94,6 +95,29 @@ impl<Namespace> IdGenerator<Namespace> {
             id: format!("{}:{}", self.sid, id),
             _ns: PhantomData
         }
+    }
+}
+
+/// A set of Id-having things
+#[derive(Clone)]
+pub struct IdMap<T: 'static> {
+    map: collections::HashMap<Id<T>, T>
+}
+
+impl<T> IdMap<T> {
+    /// Creates an empty IdMap
+    pub fn new() -> IdMap<T> {
+        IdMap { map: collections::HashMap::new() }
+    }
+
+    /// Gets the value from the map with the specified Id
+    pub fn get(&self, id: &Id<T>) -> Option<&T> {
+        self.map.get(id)
+    }
+
+    /// Inserts a value into the map, returning the previous value, if it exists
+    pub fn insert(&mut self, id: Id<T>, x: T) -> Option<T> {
+        self.map.insert(id, x)
     }
 }
 

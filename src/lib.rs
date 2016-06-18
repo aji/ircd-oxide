@@ -10,6 +10,7 @@
 //! assembled into a small `main` implementation in a separate binary.
 
 //#![warn(missing_docs)]
+#![allow(unused_imports)]
 
 extern crate mio;
 extern crate rand;

@@ -9,6 +9,13 @@
 use state;
 use state::Id;
 
+/// This has nothing to do with the distributed systems notion of atomicity
+pub trait Atomic {
+    fn atom_id(&self) -> AtomId;
+
+    fn into_atom(self) -> Atom;
+}
+
 #[derive(PartialEq, Eq)]
 pub enum AtomId {
     Identity(Id<state::Identity>),

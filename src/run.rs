@@ -90,8 +90,6 @@ impl mio::Handler for Top {
     ) {
         debug!("event becomes ready");
 
-        let mut next_world: Option<World> = None;
-
         // This function is turning out to be a big mess, but the basic
         // structure is pretty straightforward:
         //

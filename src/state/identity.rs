@@ -21,6 +21,9 @@
 
 use std::collections::HashMap;
 
+use state::Atom;
+use state::AtomId;
+use state::Atomic;
 use state::Id;
 
 /// A user identity.
@@ -46,4 +49,10 @@ impl Identity {
     pub fn temporary(&self) -> bool {
         self.temporary
     }
+}
+
+impl Atomic for Identity {
+    fn atom_id(&self) -> AtomId { AtomId::Identity(self.id().clone()) }
+
+    fn into_atom(self) -> Atom { Atom::Identity(self) }
 }

@@ -18,6 +18,7 @@ pub mod world;
 
 pub use self::atom::Atom;
 pub use self::atom::AtomId;
+pub use self::atom::Atomic;
 pub use self::channel::Channel;
 pub use self::checkpoint::Changes;
 pub use self::checkpoint::Change;

@@ -16,6 +16,7 @@ use irc::client::Client;
 use irc::client::ClientHandler;
 use irc::global::IRCD;
 use irc::listen::Listener;
+use state::checkpoint::Change;
 use state::world::World;
 
 /// The top-level IRC server structure
@@ -102,6 +103,8 @@ impl mio::Handler for Top {
         // take a new borrow to perform the Action. It's a little screwy and I'd
         // highly appreciate guidance to do it better!
 
+        let mut changes: Option<Vec<Change>> = None;
+
         let action = {
             let tdata = match self.tokens.get_mut(&tk) {
                 Some(tdata) => tdata,
@@ -137,6 +140,8 @@ impl mio::Handler for Top {
                         }
                     };
 
+                    changes = Some(editor.finish());
+
                     act
                 },
             }
@@ -156,6 +161,10 @@ impl mio::Handler for Top {
                     error!("error adding client: {}", e);
                 }
             },
+        }
+
+        if let Some(changes) = changes {
+            info!("there were {} changes", changes.len());
         }
     }
 }

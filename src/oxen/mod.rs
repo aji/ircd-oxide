@@ -12,7 +12,7 @@
 //! at-least-once case. For such messages, a message numbering scheme is used to
 //! detect duplicates and correctly order messages.
 //!
-//! Because of ircd-oxide's state difference and merging capabilities, the
+//! Because of ircd-oxide's state checkpointing and merging capabilities, the
 //! out-of-order delivered at-least-once case is good enough for synchronizing
 //! state. For cases that need to map more closely to traditional IRC, such as
 //! PRIVMSG, the in-order delivered once functionality can be used.

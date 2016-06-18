@@ -42,7 +42,6 @@ use std::marker::PhantomData;
 use std::hash::Hash;
 use std::rc::Rc;
 
-use state::diff;
 use state::Clock;
 use state::Id;
 use state::StateItem;
@@ -175,8 +174,6 @@ impl<Owner: 'static, Over: 'static> Clone for Claim<Owner, Over> {
         }
     }
 }
-
-impl<Owner: 'static, Over: 'static> diff::AtomDiffable for Claim<Owner, Over> { }
 
 impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
     fn merge(&mut self, other: &Claim<Owner, Over>) -> &mut Claim<Owner, Over> {

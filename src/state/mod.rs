@@ -9,7 +9,6 @@
 pub mod channel;
 pub mod claim;
 pub mod clock;
-pub mod diff;
 pub mod id;
 pub mod identity;
 pub mod masklist;
@@ -19,8 +18,6 @@ pub use self::channel::Channel;
 pub use self::claim::Claim;
 pub use self::clock::Clock;
 pub use self::clock::Clocked;
-pub use self::diff::Diffable;
-pub use self::diff::Differ;
 pub use self::id::Id;
 pub use self::id::IdGenerator;
 pub use self::id::IdMap;

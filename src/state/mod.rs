@@ -6,7 +6,9 @@
 
 //! State handling
 
+pub mod atom;
 pub mod channel;
+pub mod checkpoint;
 pub mod claim;
 pub mod clock;
 pub mod id;
@@ -14,7 +16,11 @@ pub mod identity;
 pub mod masklist;
 pub mod world;
 
+pub use self::atom::Atom;
+pub use self::atom::AtomId;
 pub use self::channel::Channel;
+pub use self::checkpoint::Changes;
+pub use self::checkpoint::Change;
 pub use self::claim::Claim;
 pub use self::clock::Clock;
 pub use self::clock::Clocked;

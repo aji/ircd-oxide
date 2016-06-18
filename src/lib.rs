@@ -9,7 +9,7 @@
 //! ircd-oxide is structured as a large library whose main entry points are
 //! assembled into a small `main` implementation in a separate binary.
 
-#![warn(missing_docs)]
+//#![warn(missing_docs)]
 
 extern crate mio;
 extern crate rand;

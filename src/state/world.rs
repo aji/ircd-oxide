@@ -16,6 +16,7 @@ use state::id::Id;
 use state::id::IdGenerator;
 use state::id::IdMap;
 use state::identity::Identity;
+use state::nickname::NicknameMap;
 
 /// A trait that defines operations a world-changer can perform
 pub trait WorldView {
@@ -27,6 +28,7 @@ pub trait WorldView {
 pub struct World {
     // strictly global:
     identities: IdMap<Identity>,
+    nicknames: NicknameMap,
 
     // strictly local:
     sid: Sid,
@@ -38,6 +40,7 @@ impl World {
     pub fn new(sid: Sid) -> World {
         World {
             identities: IdMap::new(),
+            nicknames: NicknameMap::new(),
 
             sid: sid.clone(),
             idgen_identity: IdGenerator::new(sid.clone()),

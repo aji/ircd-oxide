@@ -12,6 +12,7 @@ pub mod claim;
 pub mod clock;
 pub mod id;
 pub mod identity;
+pub mod nickname;
 pub mod world;
 
 /// `StateItem` will be implemented by all updatable pieces of global shared

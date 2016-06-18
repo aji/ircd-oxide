@@ -126,6 +126,15 @@ impl<Owner: 'static, Over: 'static> Claim<Owner, Over> {
         }
     }
 
+    /// Returns the current owner of this claim, if the claim is valid
+    pub fn owner(&self) -> Option<&Id<Owner>> {
+        if self.is_valid() {
+            self.owner.as_ref()
+        } else {
+            None
+        }
+    }
+
     /// Determines if the claim is valid
     pub fn is_valid(&self) -> bool {
         self.claimed > self.expired

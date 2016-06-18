@@ -6,8 +6,8 @@
 
 //! State checkpointing
 
-use state::Atom;
-use state::AtomId;
+use state::atom::Atom;
+use state::atom::AtomId;
 
 pub struct Changes {
     changes: Vec<Change>

@@ -42,8 +42,8 @@ use std::marker::PhantomData;
 use std::hash::Hash;
 use std::rc::Rc;
 
-use state::Clock;
-use state::Id;
+use state::clock::Clock;
+use state::id::Id;
 use state::StateItem;
 use common::Sid;
 
@@ -232,7 +232,7 @@ fn assert_claim_merge<Owner: 'static>(
 
 #[test]
 fn test_claim_merge() {
-    use state::IdGenerator;
+    use state::id::IdGenerator;
     use common::Sid;
 
     let mut idgen: IdGenerator<()> = IdGenerator::new(Sid::identity());

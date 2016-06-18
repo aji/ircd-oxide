@@ -6,6 +6,8 @@
 
 //! Mask/ban lists
 
+this file is not to be compiled at present
+
 use std::collections::HashMap;
 
 use state::Clock;

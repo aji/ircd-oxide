@@ -18,9 +18,9 @@ use irc::net::IrcStream;
 use irc::numeric::*;
 use irc::output::IrcWriter;
 use run;
-use state::Id;
-use state::Identity;
-use state::WorldView;
+use state::id::Id;
+use state::identity::Identity;
+use state::world::WorldView;
 
 /// An IRC client
 pub struct Client {

@@ -7,31 +7,12 @@
 //! State handling
 
 pub mod atom;
-pub mod channel;
 pub mod checkpoint;
 pub mod claim;
 pub mod clock;
 pub mod id;
 pub mod identity;
-pub mod masklist;
 pub mod world;
-
-pub use self::atom::Atom;
-pub use self::atom::AtomId;
-pub use self::atom::Atomic;
-pub use self::channel::Channel;
-pub use self::checkpoint::Changes;
-pub use self::checkpoint::Change;
-pub use self::claim::Claim;
-pub use self::clock::Clock;
-pub use self::clock::Clocked;
-pub use self::id::Id;
-pub use self::id::IdGenerator;
-pub use self::id::IdMap;
-pub use self::identity::Identity;
-pub use self::masklist::MaskList;
-pub use self::world::World;
-pub use self::world::WorldView;
 
 /// `StateItem` will be implemented by all updatable pieces of global shared
 /// state. The `merge()` operation will be used to perform all updates, and

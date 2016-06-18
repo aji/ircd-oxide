@@ -21,10 +21,10 @@
 
 use std::collections::HashMap;
 
-use state::Atom;
-use state::AtomId;
-use state::Atomic;
-use state::Id;
+use state::atom::Atom;
+use state::atom::AtomId;
+use state::atom::Atomic;
+use state::id::Id;
 
 /// A user identity.
 #[derive(Clone, PartialEq, Eq)]

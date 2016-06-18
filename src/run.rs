@@ -16,7 +16,7 @@ use irc::client::Client;
 use irc::client::ClientHandler;
 use irc::global::IRCD;
 use irc::listen::Listener;
-use state::World;
+use state::world::World;
 
 /// The top-level IRC server structure
 pub struct Top {

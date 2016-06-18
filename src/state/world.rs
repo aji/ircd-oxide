@@ -9,14 +9,13 @@
 use std::collections::HashMap;
 
 use common::Sid;
-use state::Atomic;
-use state::Channel;
-use state::Changes;
-use state::Change;
-use state::Id;
-use state::IdGenerator;
-use state::IdMap;
-use state::Identity;
+use state::atom::Atomic;
+use state::checkpoint::Changes;
+use state::checkpoint::Change;
+use state::id::Id;
+use state::id::IdGenerator;
+use state::id::IdMap;
+use state::identity::Identity;
 
 /// A trait that defines operations a world-changer can perform
 pub trait WorldView {

@@ -7,7 +7,7 @@
 //! Atoms of global state
 
 use state;
-use state::Id;
+use state::id::Id;
 
 /// This has nothing to do with the distributed systems notion of atomicity
 pub trait Atomic {
@@ -18,11 +18,11 @@ pub trait Atomic {
 
 #[derive(PartialEq, Eq)]
 pub enum AtomId {
-    Identity(Id<state::Identity>),
+    Identity(Id<state::identity::Identity>),
 }
 
 pub enum Atom {
-    Identity(state::Identity),
+    Identity(state::identity::Identity),
 }
 
 impl Atom {

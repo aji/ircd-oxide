@@ -212,6 +212,51 @@ impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
     }
 }
 
+/// `ClaimSet`s map owners to the things they own. Owners can own multiple things,
+/// but are restricted to one active thing.
+pub struct ClaimSet<Owner: 'static, Over: 'static + Hash + Eq> {
+    sid: Sid,
+    claims: HashMap<Over, Claim<Owner, Over>>,
+    active: HashMap<Id<Owner>, Over>,
+}
+
+impl<Owner: 'static, Over: 'static + Hash + Eq> ClaimSet<Owner, Over> {
+    /// Creates a new `ClaimSet` that will use the given `Sid` for creating new claims.
+    pub fn new(sid: Sid) -> ClaimSet<Owner, Over> {
+        ClaimSet {
+            sid: sid,
+            claims: HashMap::new(),
+            active: HashMap::new(),
+        }
+    }
+
+    /// Returns the owner of the given thing, if they exist
+    pub fn owner(&self, over: &Over) -> Option<&Id<Owner>> {
+        self.claims.get(over).and_then(|c| c.owner())
+    }
+
+    /// Returns the active thing the given owner is using
+    pub fn active(&self, owner: &Id<Owner>) -> Option<&Over> {
+        self.active.get(owner)
+    }
+
+    /// Claims the given thing for the given owner. Returns whether the claim was successful.
+    pub fn claim(&mut self, owner: Id<Owner>, over: Over) -> bool {
+        self.claims
+            .entry(over)
+            .or_insert(Claim::empty())
+            .claim(self.sid, owner)
+    }
+
+    /// Sets the active thing being used by the given owner.
+    pub fn set_active(&mut self, owner: Id<Owner>, over: Over) -> bool {
+        match self.owner(&over).map(|o| *o == owner) {
+            Some(true) => { self.active.insert(owner, over); true }
+            _ => false
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(non_snake_case)]
 fn assert_claim_merge<Owner: 'static>(

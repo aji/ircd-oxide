@@ -20,8 +20,22 @@ use state::identity::Identity;
 
 /// A trait that defines operations a world-changer can perform
 pub trait WorldView {
+    // MUTATIONS
+    // ====================
+
     /// Creates a temporary identity and returns its ID
     fn create_temp_identity(&mut self) -> Id<Identity>;
+
+    /// Claims a nickname for an identity. Returns whether the claim was successful.
+    fn nick_claim(&mut self, owner: Id<Identity>, nick: String) -> bool;
+
+    /// Changes an identity's active nickname. Returns whether the operation was successful.
+    fn nick_use(&mut self, owner: Id<Identity>, nick: String) -> bool;
+
+    // READ-ONLY
+    // ====================
+
+    fn nickname(&self, owner: &Id<Identity>) -> Option<&String>;
 }
 
 /// The top level struct that contains all conceptually global state.
@@ -94,5 +108,17 @@ impl<'w> WorldView for WorldGuard<'w> {
         self.changes.add(Change::Add(identity.atom_id()));
         self.world.identities.insert(id.clone(), identity);
         id
+    }
+
+    fn nick_claim(&mut self, owner: Id<Identity>, nick: String) -> bool {
+        self.world.nicknames.nicknames.claim(owner, Nickname(nick))
+    }
+
+    fn nick_use(&mut self, owner: Id<Identity>, nick: String) -> bool {
+        self.world.nicknames.nicknames.set_active(owner, Nickname(nick))
+    }
+
+    fn nickname(&self, owner: &Id<Identity>) -> Option<&String> {
+        self.world.nicknames.nicknames.active(owner).map(|n| &n.0)
     }
 }

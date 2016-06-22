@@ -12,11 +12,11 @@ use common::Sid;
 use state::atom::Atomic;
 use state::checkpoint::Changes;
 use state::checkpoint::Change;
+use state::claim::ClaimSet;
 use state::id::Id;
 use state::id::IdGenerator;
 use state::id::IdMap;
 use state::identity::Identity;
-use state::nickname::NicknameMap;
 
 /// A trait that defines operations a world-changer can perform
 pub trait WorldView {
@@ -40,16 +40,31 @@ impl World {
     pub fn new(sid: Sid) -> World {
         World {
             identities: IdMap::new(),
-            nicknames: NicknameMap::new(),
+            nicknames: NicknameMap::new(sid),
 
-            sid: sid.clone(),
-            idgen_identity: IdGenerator::new(sid.clone()),
+            sid: sid,
+            idgen_identity: IdGenerator::new(sid),
         }
     }
 
     /// Returns a reference to the world that can be used to make changes.
     pub fn editor<'w>(&'w mut self) -> WorldGuard<'w> {
         WorldGuard::new(self)
+    }
+}
+
+/// A struct for handling mappings from nicknames to users
+struct NicknameMap {
+    nicknames: ClaimSet<Identity, Nickname>
+}
+
+/// A nickname
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct Nickname(String);
+
+impl NicknameMap {
+    fn new(sid: Sid) -> NicknameMap {
+        NicknameMap { nicknames: ClaimSet::new(sid) }
     }
 }
 

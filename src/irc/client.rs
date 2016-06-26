@@ -34,10 +34,10 @@ enum ClientState {
 }
 
 struct PendingData {
-    password: Option<Vec<u8>>,
-    nickname: Option<Vec<u8>>,
-    username: Option<Vec<u8>>,
-    realname: Option<Vec<u8>>,
+    password: Option<String>,
+    nickname: Option<String>,
+    username: Option<String>,
+    realname: Option<String>,
 }
 
 struct ActiveData {
@@ -191,27 +191,43 @@ impl ClientHandler {
     }
 }
 
+fn to_string(v: &[u8]) -> Option<String> {
+    String::from_utf8(v.to_vec()).ok()
+}
+
 // in a funtion so we can dedent
 fn handlers(ch: &mut ClientHandler) {
     ch.pending.add(b"PASS", 1, |_ctx, data, m| {
-        data.password = Some(m.args[0].to_vec());
+        match to_string(m.args[0]) {
+            Some(s) => data.password = Some(s),
+            None => info!("password must be valid UTF-8!"),
+        }
     });
 
     ch.pending.add(b"NICK", 1, |_ctx, data, m| {
-        data.nickname = Some(m.args[0].to_vec());
+        match to_string(m.args[0]) {
+            Some(s) => data.nickname = Some(s),
+            None => info!("nickname must be valid UTF-8!"),
+        }
     });
 
     ch.pending.add(b"USER", 4, |_ctx, data, m| {
-        data.username = Some(m.args[0].to_vec());
-        data.realname = Some(m.args[3].to_vec());
+        let user = to_string(m.args[0]);
+        let real = to_string(m.args[3]);
+        if user.is_some() && real.is_some() {
+            data.username = user;
+            data.realname = real;
+        } else {
+            info!("username and realname must be valid UTF-8!");
+        }
     });
 }
 
 struct Promotion {
-    password: Vec<u8>,
-    nickname: Vec<u8>,
-    username: Vec<u8>,
-    realname: Vec<u8>,
+    password: String,
+    nickname: String,
+    username: String,
+    realname: String,
 }
 
 impl Promotion {

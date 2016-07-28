@@ -28,12 +28,3 @@ pub struct ChannelUser {
     is_chanop: Clocked<bool>,
     is_voiced: Clocked<bool>,
 }
-
-impl StateItem for ChannelUser {
-    fn merge(&mut self, other: &ChannelUser) -> &mut ChannelUser {
-        self.is_chanop.merge(&other.is_chanop);
-        self.is_voiced.merge(&other.is_voiced);
-
-        self
-    }
-}

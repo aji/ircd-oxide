@@ -44,7 +44,6 @@ use std::rc::Rc;
 
 use state::clock::Clock;
 use state::id::Id;
-use state::StateItem;
 use common::Sid;
 
 /// A claim object.
@@ -181,34 +180,6 @@ impl<Owner: 'static, Over: 'static> Clone for Claim<Owner, Over> {
             owner: self.owner.clone(),
             _over: PhantomData,
         }
-    }
-}
-
-impl<Owner: 'static, Over: 'static> StateItem for Claim<Owner, Over> {
-    fn merge(&mut self, other: &Claim<Owner, Over>) -> &mut Claim<Owner, Over> {
-        if self.expired == other.expired {
-            // expirations are equal, just take the older claim
-            if self.claimed > other.claimed {
-                *self = other.clone();
-            }
-        } else {
-            // reconcile the expiration first
-            if self.expired < other.expired {
-                // their expiration is newer
-                self.expired = other.expired;
-            }
-
-            // with one expiration, reconcile the claim: if we have expired, or
-            // they have not expired and have an older claim, then pick them.
-            if self.expired > self.claimed ||
-                    (self.claimed > other.claimed &&
-                    other.claimed > self.expired) {
-                self.claimed = other.claimed;
-                self.owner = other.owner.clone();
-            }
-        }
-
-        self
     }
 }
 

@@ -22,7 +22,6 @@ use std::cmp;
 use std::fmt;
 use time;
 
-use state::StateItem;
 use common::Sid;
 
 /// A basic clock implementation. Ties on timestamps are resolved by using the
@@ -96,17 +95,6 @@ impl cmp::Ord for Clock {
     }
 }
 
-impl StateItem for Clock {
-    fn merge(&mut self, other: &Clock) -> &mut Clock {
-        if *self < *other {
-            self.time  = other.time;
-            self.sid   = other.sid;
-        }
-
-        self
-    }
-}
-
 /// A value that has an associated timestamp, and whose merge rules are based on
 /// taking the value with the newer clock.
 #[derive(Clone)]
@@ -131,17 +119,6 @@ impl<T: Clone> Clocked<T> {
             clock: Clock::now(sid),
             data: data
         }
-    }
-}
-
-impl<T: Clone> StateItem for Clocked<T> {
-    fn merge(&mut self, other: &Clocked<T>) -> &mut Clocked<T> {
-        if self.clock < other.clock {
-            self.clock  = other.clock;
-            self.data   = other.data.clone();
-        }
-
-        self
     }
 }
 

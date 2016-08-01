@@ -7,6 +7,7 @@
 //! State handling
 
 pub mod atom;
+pub mod channel;
 pub mod checkpoint;
 pub mod claim;
 pub mod clock;

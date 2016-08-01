@@ -221,6 +221,26 @@ fn handlers(ch: &mut ClientHandler) {
             info!("username and realname must be valid UTF-8!");
         }
     });
+
+    ch.active.add(b"JOIN", 0, |ctx, data, m| {
+        let chan = {
+            let chname = match to_string(m.args[0]) {
+                Some(name) => name,
+                None => { info!("channel name must be valid UTF-8!"); return; }
+            };
+
+            match ctx.world.channel_name_owner(&chname).cloned() {
+                Some(chan) => chan,
+                None => {
+                    let chan = ctx.world.create_channel();
+                    ctx.world.channel_claim(chan.clone(), chname.clone());
+                    chan
+                }
+            }
+        };
+
+        // add user to channel
+    });
 }
 
 struct Promotion {

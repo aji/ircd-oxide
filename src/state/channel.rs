@@ -6,25 +6,5 @@
 
 //! Channel state
 
-this file is not to be compiled at present
-
-use std::collections::HashMap;
-
-use state::Clocked;
-use state::Id;
-use state::StateItem;
-
 /// An IRC channel.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Channel {
-    /// The channel topic, as a timestamped `String`
-    pub topic: Clocked<String>,
-    users: HashMap<Id<()>, ChannelUser>,
-}
-
-/// Extra data associated with a user in an IRC channel.
-#[derive(Clone, PartialEq, Eq)]
-pub struct ChannelUser {
-    is_chanop: Clocked<bool>,
-    is_voiced: Clocked<bool>,
-}
+pub struct Channel;

@@ -37,6 +37,7 @@
 //! In the future, to prevent the unbounded growth of expired claims, we may use
 //! some kind of strong consistency to clean up old expirations.
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::hash::Hash;
@@ -202,7 +203,7 @@ impl<Owner: 'static, Over: 'static + Hash + Eq> ClaimSet<Owner, Over> {
     }
 
     /// Returns the owner of the given thing, if they exist
-    pub fn owner(&self, over: &Over) -> Option<&Id<Owner>> {
+    pub fn owner<T: Hash + Eq>(&self, over: &T) -> Option<&Id<Owner>> where Over: Borrow<T> {
         self.claims.get(over).and_then(|c| c.owner())
     }
 

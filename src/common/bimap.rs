@@ -187,3 +187,35 @@ impl<'m, T> Iterator for AllB<'m, T> {
             .and_then(|ti| tt.get(ti))
     }
 }
+
+#[test]
+fn test_happy_bimap() {
+    let mut m: Bimap<u16, u32, u64> = Bimap::new();
+
+    m.insert(3, 4, 12);
+    m.insert(5, 7, 35);
+
+    assert_eq!(m.get(&3, &4), Some(&12));
+    assert_eq!(m.get(&5, &7), Some(&35));
+    assert_eq!(m.get(&1, &1), None);
+}
+
+#[test]
+fn test_bimap_iters() {
+    let mut m: Bimap<u16, u32, u64> = Bimap::new();
+
+    m.insert(5, 4, 20);
+    m.insert(3, 4, 12);
+    m.insert(3, 5, 15);
+
+    let att: Vec<&u64> = m.all_a(&4).collect();
+    let btt: Vec<&u64> = m.all_b(&3).collect();
+
+    assert_eq!(att.get(0), Some(&&20));
+    assert_eq!(att.get(1), Some(&&12));
+    assert_eq!(att.get(2), None);
+
+    assert_eq!(btt.get(0), Some(&&12));
+    assert_eq!(btt.get(1), Some(&&15));
+    assert_eq!(btt.get(2), None);
+}

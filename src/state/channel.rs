@@ -6,5 +6,18 @@
 
 //! Channel state
 
+use state::id::Id;
+use state::identity::Identity;
+
 /// An IRC channel.
-pub struct Channel;
+pub struct Channel {
+    id: Id<Channel>,
+}
+
+impl Channel {
+    pub fn new(id: Id<Channel>) -> Channel {
+        Channel { id: id }
+    }
+}
+
+pub struct ChanUser;

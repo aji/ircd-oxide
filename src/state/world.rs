@@ -20,7 +20,8 @@ use state::id::IdGenerator;
 use state::id::IdMap;
 use state::identity::Identity;
 
-/// A trait that defines operations a world-changer can perform
+/// A trait that defines operations a world-changer can perform. Implementers should not
+/// apply any special logic, such as determining whether a user is allowed to join a channel.
 pub trait WorldView {
     // MUTATIONS
     // ====================
@@ -43,6 +44,9 @@ pub trait WorldView {
     /// Changes a channel's active name. Returns whether the operation was successful.
     fn channel_use(&mut self, owner: Id<Channel>, name: String) -> bool;
 
+    // Adds a user to a channel
+    //fn channel_user_add(&mut self, chan: Id<Channel>, user: Id<Identity>);
+
     // READ-ONLY
     // ====================
 
@@ -60,7 +64,8 @@ pub struct World {
     // strictly global:
     identities: IdMap<Identity>,
     nicknames: NicknameMap,
-    channels: ChannelMap,
+    channels: IdMap<Channel>,
+    channames: ChannameMap,
 
     // strictly local:
     sid: Sid,
@@ -74,7 +79,8 @@ impl World {
         World {
             identities: IdMap::new(),
             nicknames: NicknameMap::new(sid),
-            channels: ChannelMap::new(sid),
+            channels: IdMap::new(),
+            channames: ChannameMap::new(sid),
 
             sid: sid,
             idgen_identity: IdGenerator::new(sid),
@@ -90,7 +96,7 @@ impl World {
 
 /// A struct for handling mappings from nicknames to users
 struct NicknameMap {
-    nicknames: ClaimSet<Identity, Nickname>
+    set: ClaimSet<Identity, Nickname>
 }
 
 /// A nickname
@@ -103,25 +109,25 @@ impl Borrow<String> for Nickname {
 
 impl NicknameMap {
     fn new(sid: Sid) -> NicknameMap {
-        NicknameMap { nicknames: ClaimSet::new(sid) }
+        NicknameMap { set: ClaimSet::new(sid) }
     }
 }
 /// A struct for handling mappings from channel names to channels
-struct ChannelMap {
-    channels: ClaimSet<Channel, ChannelName>
+struct ChannameMap {
+    set: ClaimSet<Channel, Channame>
 }
 
 /// A channel name
 #[derive(Clone, Hash, PartialEq, Eq)]
-struct ChannelName(String);
+struct Channame(String);
 
-impl Borrow<String> for ChannelName {
+impl Borrow<String> for Channame {
     fn borrow(&self) -> &String { &self.0 }
 }
 
-impl ChannelMap {
-    fn new(sid: Sid) -> ChannelMap {
-        ChannelMap { channels: ClaimSet::new(sid) }
+impl ChannameMap {
+    fn new(sid: Sid) -> ChannameMap {
+        ChannameMap { set: ClaimSet::new(sid) }
     }
 }
 
@@ -154,42 +160,44 @@ impl<'w> WorldView for WorldGuard<'w> {
     }
 
     fn nick_claim(&mut self, owner: Id<Identity>, nick: String) -> bool {
-        self.world.nicknames.nicknames.claim(owner, Nickname(nick))
+        self.world.nicknames.set.claim(owner, Nickname(nick))
     }
 
     fn nick_use(&mut self, owner: Id<Identity>, nick: String) -> bool {
-        self.world.nicknames.nicknames.set_active(owner, Nickname(nick))
+        self.world.nicknames.set.set_active(owner, Nickname(nick))
     }
 
     fn create_channel(&mut self) -> Id<Channel> {
         let id = self.world.idgen_channel.next();
+        let channel = Channel::new(id.clone());
         // TODO: changes
+        self.world.channels.insert(id.clone(), channel);
         id
     }
 
     /// Claims a name for a channel. Returns whether the claim was successful.
     fn channel_claim(&mut self, owner: Id<Channel>, name: String) -> bool {
-        self.world.channels.channels.claim(owner, ChannelName(name))
+        self.world.channames.set.claim(owner, Channame(name))
     }
 
     /// Changes a channel's active name. Returns whether the operation was successful.
     fn channel_use(&mut self, owner: Id<Channel>, name: String) -> bool {
-        self.world.channels.channels.set_active(owner, ChannelName(name))
+        self.world.channames.set.set_active(owner, Channame(name))
     }
 
     fn nickname_owner(&self, nick: &String) -> Option<&Id<Identity>> {
-        self.world.nicknames.nicknames.owner(nick)
+        self.world.nicknames.set.owner(nick)
     }
 
     fn nickname(&self, owner: &Id<Identity>) -> Option<&String> {
-        self.world.nicknames.nicknames.active(owner).map(|n| &n.0)
+        self.world.nicknames.set.active(owner).map(|n| &n.0)
     }
 
     fn channel_name_owner(&self, name: &String) -> Option<&Id<Channel>> {
-        self.world.channels.channels.owner(name)
+        self.world.channames.set.owner(name)
     }
 
     fn channel_name(&self, owner: &Id<Channel>) -> Option<&String> {
-        self.world.channels.channels.active(owner).map(|c| &c.0)
+        self.world.channames.set.active(owner).map(|c| &c.0)
     }
 }

@@ -239,7 +239,7 @@ fn handlers(ch: &mut ClientHandler) {
             }
         };
 
-        // add user to channel
+        ctx.world.channel_user_add(chan, data.identity.clone())
     });
 }
 

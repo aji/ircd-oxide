@@ -12,6 +12,8 @@ use std::collections::HashMap;
 use common::Sid;
 use state::atom::Atomic;
 use state::channel::Channel;
+use state::channel::ChanUser;
+use state::channel::ChanUserSet;
 use state::checkpoint::Changes;
 use state::checkpoint::Change;
 use state::claim::ClaimSet;
@@ -45,7 +47,7 @@ pub trait WorldView {
     fn channel_use(&mut self, owner: Id<Channel>, name: String) -> bool;
 
     // Adds a user to a channel
-    //fn channel_user_add(&mut self, chan: Id<Channel>, user: Id<Identity>);
+    fn channel_user_add(&mut self, chan: Id<Channel>, user: Id<Identity>);
 
     // READ-ONLY
     // ====================
@@ -66,6 +68,7 @@ pub struct World {
     nicknames: NicknameMap,
     channels: IdMap<Channel>,
     channames: ChannameMap,
+    chanusers: ChanUserSet,
 
     // strictly local:
     sid: Sid,
@@ -81,6 +84,7 @@ impl World {
             nicknames: NicknameMap::new(sid),
             channels: IdMap::new(),
             channames: ChannameMap::new(sid),
+            chanusers: ChanUserSet::new(),
 
             sid: sid,
             idgen_identity: IdGenerator::new(sid),
@@ -183,6 +187,10 @@ impl<'w> WorldView for WorldGuard<'w> {
     /// Changes a channel's active name. Returns whether the operation was successful.
     fn channel_use(&mut self, owner: Id<Channel>, name: String) -> bool {
         self.world.channames.set.set_active(owner, Channame(name))
+    }
+
+    fn channel_user_add(&mut self, chan: Id<Channel>, user: Id<Identity>) {
+        self.world.chanusers.join(chan, user);
     }
 
     fn nickname_owner(&self, nick: &String) -> Option<&Id<Identity>> {

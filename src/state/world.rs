@@ -65,9 +65,9 @@ pub trait WorldView {
 pub struct World {
     // strictly global:
     identities: IdMap<Identity>,
-    nicknames: NicknameMap,
+    nicknames: ClaimSet<Identity, Nickname>,
     channels: IdMap<Channel>,
-    channames: ChannameMap,
+    channames: ClaimSet<Channel, Channame>,
     chanusers: ChanUserSet,
 
     // strictly local:
@@ -81,9 +81,9 @@ impl World {
     pub fn new(sid: Sid) -> World {
         World {
             identities: IdMap::new(),
-            nicknames: NicknameMap::new(sid),
+            nicknames: ClaimSet::new(sid),
             channels: IdMap::new(),
-            channames: ChannameMap::new(sid),
+            channames: ClaimSet::new(sid),
             chanusers: ChanUserSet::new(),
 
             sid: sid,
@@ -98,11 +98,6 @@ impl World {
     }
 }
 
-/// A struct for handling mappings from nicknames to users
-struct NicknameMap {
-    set: ClaimSet<Identity, Nickname>
-}
-
 /// A nickname
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct Nickname(String);
@@ -111,28 +106,12 @@ impl Borrow<String> for Nickname {
     fn borrow(&self) -> &String { &self.0 }
 }
 
-impl NicknameMap {
-    fn new(sid: Sid) -> NicknameMap {
-        NicknameMap { set: ClaimSet::new(sid) }
-    }
-}
-/// A struct for handling mappings from channel names to channels
-struct ChannameMap {
-    set: ClaimSet<Channel, Channame>
-}
-
 /// A channel name
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct Channame(String);
 
 impl Borrow<String> for Channame {
     fn borrow(&self) -> &String { &self.0 }
-}
-
-impl ChannameMap {
-    fn new(sid: Sid) -> ChannameMap {
-        ChannameMap { set: ClaimSet::new(sid) }
-    }
 }
 
 /// A struct for making changes to a World. Changes are tracked
@@ -164,11 +143,11 @@ impl<'w> WorldView for WorldGuard<'w> {
     }
 
     fn nick_claim(&mut self, owner: Id<Identity>, nick: String) -> bool {
-        self.world.nicknames.set.claim(owner, Nickname(nick))
+        self.world.nicknames.claim(owner, Nickname(nick))
     }
 
     fn nick_use(&mut self, owner: Id<Identity>, nick: String) -> bool {
-        self.world.nicknames.set.set_active(owner, Nickname(nick))
+        self.world.nicknames.set_active(owner, Nickname(nick))
     }
 
     fn create_channel(&mut self) -> Id<Channel> {
@@ -181,12 +160,12 @@ impl<'w> WorldView for WorldGuard<'w> {
 
     /// Claims a name for a channel. Returns whether the claim was successful.
     fn channel_claim(&mut self, owner: Id<Channel>, name: String) -> bool {
-        self.world.channames.set.claim(owner, Channame(name))
+        self.world.channames.claim(owner, Channame(name))
     }
 
     /// Changes a channel's active name. Returns whether the operation was successful.
     fn channel_use(&mut self, owner: Id<Channel>, name: String) -> bool {
-        self.world.channames.set.set_active(owner, Channame(name))
+        self.world.channames.set_active(owner, Channame(name))
     }
 
     fn channel_user_add(&mut self, chan: Id<Channel>, user: Id<Identity>) {
@@ -194,18 +173,18 @@ impl<'w> WorldView for WorldGuard<'w> {
     }
 
     fn nickname_owner(&self, nick: &String) -> Option<&Id<Identity>> {
-        self.world.nicknames.set.owner(nick)
+        self.world.nicknames.owner(nick)
     }
 
     fn nickname(&self, owner: &Id<Identity>) -> Option<&String> {
-        self.world.nicknames.set.active(owner).map(|n| &n.0)
+        self.world.nicknames.active(owner).map(|n| &n.0)
     }
 
     fn channel_name_owner(&self, name: &String) -> Option<&Id<Channel>> {
-        self.world.channames.set.owner(name)
+        self.world.channames.owner(name)
     }
 
     fn channel_name(&self, owner: &Id<Channel>) -> Option<&String> {
-        self.world.channames.set.active(owner).map(|c| &c.0)
+        self.world.channames.active(owner).map(|c| &c.0)
     }
 }

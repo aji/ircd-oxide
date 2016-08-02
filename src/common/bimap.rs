@@ -22,7 +22,7 @@ type Bi = u32;
 static nothingA: [Ai; 0] = [];
 static nothingB: [Bi; 0] = [];
 
-struct Bimap<A: Eq + Hash, B: Eq + Hash, T> {
+pub struct Bimap<A: Eq + Hash, B: Eq + Hash, T> {
     aa: HashMap<A, Ai>,
     bb: HashMap<B, Bi>,
     tt: HashMap<Ti, T>,
@@ -37,7 +37,7 @@ struct Bimap<A: Eq + Hash, B: Eq + Hash, T> {
 }
 
 impl<A: Eq + Hash, B: Eq + Hash, T> Bimap<A, B, T> {
-    fn new() -> Bimap<A, B, T> {
+    pub fn new() -> Bimap<A, B, T> {
         Bimap {
             tt: HashMap::new(),
             aa: HashMap::new(),
@@ -54,7 +54,7 @@ impl<A: Eq + Hash, B: Eq + Hash, T> Bimap<A, B, T> {
     }
 
     // Inserts m(a, b) = t
-    fn insert(&mut self, a: A, b: B, t: T) {
+    pub fn insert(&mut self, a: A, b: B, t: T) -> &mut T {
         let na = &mut self.na;
         let nb = &mut self.nb;
 
@@ -62,7 +62,6 @@ impl<A: Eq + Hash, B: Eq + Hash, T> Bimap<A, B, T> {
         let bi = self.bb.entry(b).or_insert_with(||{ *nb += 1; *nb });
 
         let ti = { self.nt += 1; self.nt };
-        self.tt.insert(ti, t);
 
         let apair = self.apair.entry(*ai).or_insert_with(|| Vec::new());
         let bpair = self.bpair.entry(*bi).or_insert_with(|| Vec::new());
@@ -71,10 +70,13 @@ impl<A: Eq + Hash, B: Eq + Hash, T> Bimap<A, B, T> {
         bpair.push(*ai);
 
         self.pairs.insert((*ai, *bi), ti);
+
+        self.tt.insert(ti, t);
+        self.tt.get_mut(&ti).unwrap()
     }
 
     // m(a, b)
-    fn get(&self, a: &A, b: &B) -> Option<&T> {
+    pub fn get(&self, a: &A, b: &B) -> Option<&T> {
         let ai = self.aa.get(a).cloned().unwrap_or(0);
         let bi = self.bb.get(b).cloned().unwrap_or(0);
 
@@ -85,22 +87,34 @@ impl<A: Eq + Hash, B: Eq + Hash, T> Bimap<A, B, T> {
         }
     }
 
+    // m(a, b)
+    pub fn get_mut(&mut self, a: &A, b: &B) -> Option<&mut T> {
+        let ai = self.aa.get(a).cloned().unwrap_or(0);
+        let bi = self.bb.get(b).cloned().unwrap_or(0);
+
+        if ai == 0 || bi == 0 {
+            None
+        } else {
+            self.tt.get_mut(self.pairs.get(&(ai, bi)).unwrap_or(&0))
+        }
+    }
+
     // all t where \exists a such that m(a, b) = t
-    fn all_a(&self, b: &B) -> AllA<T> {
+    pub fn all_a(&self, b: &B) -> AllA<T> {
         let bi = self.bb.get(b).cloned().unwrap_or(0);
         let iter = self.bpair.get(&bi).map(|v| v.iter()).unwrap_or(nothingA.iter());
         AllA::new(&self.pairs, &self.tt, bi, iter)
     }
 
     // all t where \exists b such that m(a, b) = t
-    fn all_b(&self, a: &A) -> AllB<T> {
+    pub fn all_b(&self, a: &A) -> AllB<T> {
         let ai = self.aa.get(a).cloned().unwrap_or(0);
         let iter = self.apair.get(&ai).map(|v| v.iter()).unwrap_or(nothingB.iter());
         AllB::new(&self.pairs, &self.tt, ai, iter)
     }
 
     // any t where \exists a such that m(a, b) = t
-    fn any_a(&self, b: &B) -> Option<&T> {
+    pub fn any_a(&self, b: &B) -> Option<&T> {
         let pairs = &self.pairs;
         let tt = &self.tt;
 
@@ -113,7 +127,7 @@ impl<A: Eq + Hash, B: Eq + Hash, T> Bimap<A, B, T> {
     }
 
     // any t where \exists b such that m(a, b) = t
-    fn any_b(&self, a: &A) -> Option<&T> {
+    pub fn any_b(&self, a: &A) -> Option<&T> {
         let pairs = &self.pairs;
         let tt = &self.tt;
 

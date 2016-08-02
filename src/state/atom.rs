@@ -19,16 +19,22 @@ pub trait Atomic {
 #[derive(PartialEq, Eq)]
 pub enum AtomId {
     Identity(Id<state::identity::Identity>),
+    Channel(Id<state::channel::Channel>),
+    ChanUser(Id<state::channel::Channel>, Id<state::identity::Identity>)
 }
 
 pub enum Atom {
     Identity(state::identity::Identity),
+    Channel(state::channel::Channel),
+    ChanUser(state::channel::ChanUser),
 }
 
 impl Atom {
     pub fn id(&self) -> AtomId {
         match self {
-            &Atom::Identity(ref x) => AtomId::Identity(x.id().clone())
+            &Atom::Identity(ref x) => x.atom_id(),
+            &Atom::Channel(ref x) => x.atom_id(),
+            &Atom::ChanUser(ref x) => x.atom_id(),
         }
     }
 }

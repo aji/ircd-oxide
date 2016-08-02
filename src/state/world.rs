@@ -137,7 +137,7 @@ impl<'w> WorldView for WorldGuard<'w> {
     fn create_temp_identity(&mut self) -> Id<Identity> {
         let id = self.world.idgen_identity.next();
         let identity = Identity::new(id.clone(), true);
-        self.changes.add(Change::Add(identity.atom_id()));
+        self.changes.added(&identity);
         self.world.identities.insert(id.clone(), identity);
         id
     }
@@ -153,7 +153,7 @@ impl<'w> WorldView for WorldGuard<'w> {
     fn create_channel(&mut self) -> Id<Channel> {
         let id = self.world.idgen_channel.next();
         let channel = Channel::new(id.clone());
-        // TODO: changes
+        self.changes.added(&channel);
         self.world.channels.insert(id.clone(), channel);
         id
     }
@@ -169,7 +169,10 @@ impl<'w> WorldView for WorldGuard<'w> {
     }
 
     fn channel_user_add(&mut self, chan: Id<Channel>, user: Id<Identity>) {
-        self.world.chanusers.join(chan, user);
+        if self.world.chanusers.get(&chan, &user).is_none() {
+            let cu = self.world.chanusers.join(chan, user);
+            self.changes.added(&*cu);
+        }
     }
 
     fn nickname_owner(&self, nick: &String) -> Option<&Id<Identity>> {

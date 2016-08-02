@@ -6,7 +6,13 @@
 
 //! Channel state
 
-use common::bimap::{Bimap, AllA, AllB};
+use common::bimap::Bimap;
+use common::bimap::AllA;
+use common::bimap::AllB;
+
+use state::atom::Atom;
+use state::atom::AtomId;
+use state::atom::Atomic;
 use state::id::Id;
 use state::identity::Identity;
 
@@ -19,6 +25,14 @@ impl Channel {
     pub fn new(id: Id<Channel>) -> Channel {
         Channel { id: id }
     }
+
+    pub fn id(&self) -> &Id<Channel> { &self.id }
+}
+
+impl Atomic for Channel {
+    fn atom_id(&self) -> AtomId { AtomId::Channel(self.id().clone()) }
+
+    fn into_atom(self) -> Atom { Atom::Channel(self) }
 }
 
 pub struct ChanUser {
@@ -34,6 +48,12 @@ impl ChanUser {
     pub fn channel(&self) -> &Id<Channel> { &self.chan }
 
     pub fn user(&self) -> &Id<Identity> { &self.user }
+}
+
+impl Atomic for ChanUser {
+    fn atom_id(&self) -> AtomId { AtomId::ChanUser(self.channel().clone(), self.user().clone()) }
+
+    fn into_atom(self) -> Atom { Atom::ChanUser(self) }
 }
 
 pub struct ChanUserSet {

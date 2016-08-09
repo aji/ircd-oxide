@@ -79,15 +79,16 @@ impl<X: Context> mio::Handler for Looper<X> {
     }
 }
 
-/// Pollables can post actions on a `Looper` through a `LooperActions`. Due to Rust's
-/// rules on borrowing (which I've come to realize is a good thing in this case) it's not
-/// possible for a pollable (owned by `Looper`) to have a mutable reference to itself and
-/// also a mutable reference to the `Looper` that owns it while handling an event. Therefore,
+/// Pollables can post actions on a `Looper` through a `LooperActions`
+///
+/// Due to Rust's rules on borrowing (which I've come to realize is a good thing in this case)
+/// it's not possible for a pollable (owned by `Looper`) to have a mutable reference to itself
+/// and also a mutable reference to the `Looper` that owns it while handling an event. Therefore,
 /// a `LooperActions` is passed to the pollable instead. `LooperActions` stores the actions
-/// the pollable wanted to perform and then applies them when the pollable is finished
-/// handling the event (i.e. when the mutable borrow of the pollable ends). A significant
-/// consequence is that, while the code may read like actions are being performed then and
-/// there in the pollable handler, they're actually being deferred.
+/// the pollable wanted to perform and then applies them when the pollable is finished handling
+/// the event (i.e. when the mutable borrow of the pollable ends). A significant consequence is
+/// that, while the code may read like actions are being performed then and there in the pollable
+/// handler, they're actually being deferred.
 pub struct LooperActions<X: Context> {
     to_drop: Vec<mio::Token>,
     to_add: Vec<Box<Fn(&mut LooperLoop<X>, mio::Token) -> NewPollable<X>>>,

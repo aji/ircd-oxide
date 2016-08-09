@@ -27,6 +27,7 @@ mod macros;
 
 pub mod common;
 pub mod irc;
+pub mod looper;
 pub mod oxen;
 pub mod run;
 pub mod state;

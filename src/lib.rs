@@ -9,6 +9,8 @@
 //! ircd-oxide is structured as a large library whose main entry points are
 //! assembled into a small `main` implementation in a separate binary.
 
+#![feature(fnbox)] // YUCK!!!
+
 //#![warn(missing_docs)]
 #![allow(unused_imports)]
 

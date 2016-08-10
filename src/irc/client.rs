@@ -17,13 +17,21 @@ use irc::message::Message;
 use irc::net::IrcStream;
 use irc::numeric::*;
 use irc::output::IrcWriter;
-use run;
+use looper::LooperActions;
+use looper::LooperLoop;
+use looper::Pollable;
+use run::Top;
 use state::id::Id;
 use state::identity::Identity;
 use state::world::WorldView;
 
+fn to_string(v: &[u8]) -> Option<String> {
+    String::from_utf8(v.to_vec()).ok()
+}
+
 /// An IRC client
 pub struct Client {
+    name: mio::Token,
     sock: IrcStream,
     state: ClientState,
 }
@@ -33,47 +41,29 @@ enum ClientState {
     Active(ActiveData),
 }
 
-struct PendingData {
-    password: Option<String>,
-    nickname: Option<String>,
-    username: Option<String>,
-    realname: Option<String>,
-}
-
-struct ActiveData {
-    identity: Id<Identity>,
-}
-
-// Simplifies handler invocations
-struct HandlerExtras<'c> {
-    ircd: &'c IRCD,
-    world: &'c mut WorldView,
-    wr: IrcWriter<'c>,
-}
-
 impl Client {
     /// Wraps an `TcpStream` as a `Client`
-    pub fn new(sock: TcpStream) -> Client {
-        Client {
-            sock: IrcStream::new(sock),
-            state: ClientState::Pending(PendingData::new()),
-        }
+    pub fn new(sock: TcpStream, ev: &mut LooperLoop<Top>, name: mio::Token)
+    -> io::Result<Client> {
+        let mut ircsock = IrcStream::new(sock);
+        try!(ircsock.register(name, ev));
+        Ok(Client { name: name, sock: ircsock, state: ClientState::start() })
     }
+}
 
-    /// Registers the `Client` with the given `EventLoop`
-    pub fn register<H>(&self, tok: mio::Token, ev: &mut mio::EventLoop<H>)
-    -> io::Result<()> where H: mio::Handler {
-        self.sock.register(tok, ev)
-    }
+impl ClientState {
+    fn start() -> ClientState { ClientState::Pending(PendingData::new()) }
+}
 
+impl Pollable<Top> for Client {
     /// Called to indicate data is ready on the client's socket.
-    pub fn ready(&mut self, ircd: &IRCD, world: &mut WorldView, ch: &ClientHandler)
-    -> io::Result<run::Action> {
+    fn ready(&mut self, ctx: &mut Top, act: &mut LooperActions<Top>) -> io::Result<()> {
         let sock = &self.sock;
         let state = &mut self.state;
 
         if self.sock.empty() {
-            return Ok(run::Action::DropPeer);
+            act.drop(self.name);
+            return Ok(());
         }
 
         let _: Option<()> = try!(self.sock.read(|ln| {
@@ -82,24 +72,18 @@ impl Client {
                 Err(_) => return None,
             };
 
-            let mut ctx = HandlerExtras {
-                ircd: ircd,
-                world: world,
-                wr: ircd.writer(sock),
-            };
-
             debug!("--> {}", String::from_utf8_lossy(ln));
             debug!("    {:?}", m);
 
             // take_mut::take() will *exit* on panic, so no panics!
             take_mut::take(state, |state| match state {
                 ClientState::Pending(mut data) => {
-                    ch.pending.handle(&mut ctx, &mut data, &m);
-                    try_promote(&mut ctx, data)
+                    data.handle_pending(ctx, &m, sock);
+                    data.try_promote(ctx, sock)
                 },
 
                 ClientState::Active(mut data) => {
-                    ch.active.handle(&mut ctx, &mut data, &m);
+                    data.handle_active(ctx, &m, sock);
                     ClientState::Active(data)
                 },
             });
@@ -107,14 +91,15 @@ impl Client {
             None
         }));
 
-        Ok(run::Action::Continue)
+        Ok(())
     }
 }
 
-impl From<TcpStream> for Client {
-    fn from(s: TcpStream) -> Client {
-        Client::new(s)
-    }
+struct PendingData {
+    password: Option<String>,
+    nickname: Option<String>,
+    username: Option<String>,
+    realname: Option<String>,
 }
 
 impl PendingData {
@@ -126,121 +111,87 @@ impl PendingData {
             realname: None,
         }
     }
-}
 
-struct HandlerFn<T> {
-    args: usize,
-    cb: Box<for<'c> Fn(&mut HandlerExtras<'c>, &mut T, &Message<'c>)>,
-}
+    fn handle_pending(&mut self, ctx: &mut Top, m: &Message, sock: &IrcStream) {
+        let mut wr = ctx.ircd.writer(sock);
 
-struct HandlerSet<T> {
-    handlers: HashMap<Vec<u8>, HandlerFn<T>>
-}
+        match m.verb {
+            b"PASS" => match to_string(m.args[0]) {
+                Some(s) => self.password = Some(s),
+                None => info!("password must be valid UTF-8!"),
+            },
 
-impl<T> HandlerSet<T> {
-    fn new() -> HandlerSet<T> {
-        HandlerSet { handlers: HashMap::new() }
-    }
+            b"NICK" => match to_string(m.args[0]) {
+                Some(s) => self.nickname = Some(s),
+                None => info!("nickname must be valid UTF-8!"),
+            },
 
-    fn add<F>(&mut self, verb: &[u8], args: usize, func: F)
-    where F: 'static + for<'c> Fn(&mut HandlerExtras<'c>, &mut T, &Message<'c>) {
-        self.handlers
-            .entry(verb.to_vec())
-            .or_insert_with(|| HandlerFn {
-                args: args,
-                cb: Box::new(func)
-            });
-    }
-
-    fn handle<'c>(&self, ctx: &mut HandlerExtras<'c>, data: &mut T, m: &Message<'c>) {
-        match self.handlers.get(m.verb) {
-            Some(hdlr) => {
-                if m.args.len() < hdlr.args {
-                    ctx.wr.numeric(ERR_NEEDMOREPARAMS, &[m.verb]);
-                    debug!("not enough args!");
+            b"USER" => {
+                let user = to_string(m.args[0]);
+                let real = to_string(m.args[3]);
+                if user.is_some() && real.is_some() {
+                    self.username = user;
+                    self.realname = real;
                 } else {
-                    (hdlr.cb)(ctx, data, m);
+                    info!("username and realname must be valid UTF-8!");
                 }
             },
 
-            None => {
-                ctx.wr.numeric(ERR_UNKNOWNCOMMAND, &[m.verb]);
-                debug!("client used unknown command");
-            }
+            _ => { }
         }
     }
-}
 
-/// A client handler.
-pub struct ClientHandler {
-    pending: HandlerSet<PendingData>,
-    active: HandlerSet<ActiveData>,
-}
-
-impl ClientHandler {
-    /// Creates a new client handling structure.
-    pub fn new() -> ClientHandler {
-        let mut ch = ClientHandler {
-            pending: HandlerSet::new(),
-            active: HandlerSet::new(),
-        };
-
-        handlers(&mut ch);
-
-        ch
-    }
-}
-
-fn to_string(v: &[u8]) -> Option<String> {
-    String::from_utf8(v.to_vec()).ok()
-}
-
-// in a funtion so we can dedent
-fn handlers(ch: &mut ClientHandler) {
-    ch.pending.add(b"PASS", 1, |_ctx, data, m| {
-        match to_string(m.args[0]) {
-            Some(s) => data.password = Some(s),
-            None => info!("password must be valid UTF-8!"),
-        }
-    });
-
-    ch.pending.add(b"NICK", 1, |_ctx, data, m| {
-        match to_string(m.args[0]) {
-            Some(s) => data.nickname = Some(s),
-            None => info!("nickname must be valid UTF-8!"),
-        }
-    });
-
-    ch.pending.add(b"USER", 4, |_ctx, data, m| {
-        let user = to_string(m.args[0]);
-        let real = to_string(m.args[3]);
-        if user.is_some() && real.is_some() {
-            data.username = user;
-            data.realname = real;
-        } else {
-            info!("username and realname must be valid UTF-8!");
-        }
-    });
-
-    ch.active.add(b"JOIN", 0, |ctx, data, m| {
-        let chan = {
-            let chname = match to_string(m.args[0]) {
-                Some(name) => name,
-                None => { info!("channel name must be valid UTF-8!"); return; }
-            };
-
-            match ctx.world.channel_name_owner(&chname).cloned() {
-                Some(chan) => chan,
-                None => {
-                    let chan = ctx.world.create_channel();
-                    ctx.world.channel_claim(chan.clone(), chname.clone());
-                    chan
-                }
+    fn try_promote(self, ctx: &mut Top, sock: &IrcStream) -> ClientState {
+        let promotion = match Promotion::from_pending(self) {
+            Ok(promotion) => promotion,
+            Err(data) => {
+                // user is missing something
+                return ClientState::Pending(data);
             }
         };
 
-        ctx.world.channel_user_add(chan, data.identity.clone())
-    });
+        let identity = ctx.edit(|w| w.create_temp_identity());
+
+        let mut wr = ctx.ircd.writer(sock);
+        wr.numeric(RPL_WELCOME, &[]);
+        wr.numeric(RPL_ISUPPORT, &[b"CHANTYPES=#"]);
+
+        ClientState::Active(ActiveData {
+            identity: identity,
+        })
+    }
+}
+
+struct ActiveData {
+    identity: Id<Identity>,
+}
+
+impl ActiveData {
+    fn handle_active<'c>(&mut self, ctx: &mut Top, m: &Message, sock: &IrcStream) {
+        match m.verb {
+            b"JOIN" => ctx.edit(|world| {
+                let chan = {
+                    let chname = match to_string(m.args[0]) {
+                        Some(name) => name,
+                        None => { info!("channel name must be valid UTF-8!"); return; }
+                    };
+
+                    match world.channel_name_owner(&chname).cloned() {
+                        Some(chan) => chan,
+                        None => {
+                            let chan = world.create_channel();
+                            world.channel_claim(chan.clone(), chname.clone());
+                            chan
+                        }
+                    }
+                };
+
+                world.channel_user_add(chan, self.identity.clone());
+            }),
+
+            _ => { }
+        }
+    }
 }
 
 struct Promotion {
@@ -264,23 +215,4 @@ impl Promotion {
             })
         }
     }
-}
-
-fn try_promote<'c>(ctx: &mut HandlerExtras<'c>, data: PendingData) -> ClientState {
-    let promotion = match Promotion::from_pending(data) {
-        Ok(promotion) => promotion,
-        Err(data) => {
-            // user is missing something
-            return ClientState::Pending(data);
-        }
-    };
-
-    let identity = ctx.world.create_temp_identity();
-
-    ctx.wr.numeric(RPL_WELCOME, &[]);
-    ctx.wr.numeric(RPL_ISUPPORT, &[b"CHANTYPES=#"]);
-
-    ClientState::Active(ActiveData {
-        identity: identity,
-    })
 }

@@ -34,13 +34,15 @@ mod logger {
 fn main() {
     logger::init().expect("failed to initialize logger");
 
-    let mut runner = {
-        let runner = ircd::run::Runner::new();
-        runner.expect("failed to create IRCD runner")
-    };
-
-    runner.listen(("0.0.0.0", 5050))
-        .expect("failed to create listener on port 5050");
-
-    runner.run();
+    ircd::looper::run(
+        ircd::run::Top::new(),
+        |looper, ev| {
+            looper.add(ev, |ev, tk| {
+                match ircd::irc::listen::Listener::new(("0.0.0.0", 5050), ev, tk) {
+                    Ok(l) => Ok(Box::new(l)),
+                    Err(e) => Err(e),
+                }
+            })
+        }
+    );
 }

@@ -8,6 +8,7 @@
 
 use mio;
 use rand::random;
+use std::boxed::FnBox;
 use std::collections::HashMap;
 use std::io;
 
@@ -37,8 +38,8 @@ impl<X: Context> Looper<X> {
     /// and the generated `mio` token. The function, in turn, returns the pollable to be
     /// associated with the token. The function should also ensure that the pollable is correctly
     /// registered with the event loop.
-    pub fn add<F>(&mut self, ev: &mut LooperLoop<X>, f: F) -> io::Result<()>
-    where F: Fn(&mut LooperLoop<X>, mio::Token) -> NewPollable<X> {
+    pub fn add<F>(&mut self, ev: &mut LooperLoop<X>, mut f: F) -> io::Result<()>
+    where F: FnOnce(&mut LooperLoop<X>, mio::Token) -> NewPollable<X> {
         let token = mio::Token(random());
         let p = try!(f(ev, token));
         self.pollables.insert(token, p);
@@ -91,7 +92,7 @@ impl<X: Context> mio::Handler for Looper<X> {
 /// handler, they're actually being deferred.
 pub struct LooperActions<X: Context> {
     to_drop: Vec<mio::Token>,
-    to_add: Vec<Box<Fn(&mut LooperLoop<X>, mio::Token) -> NewPollable<X>>>,
+    to_add: Vec<Box<FnBox(&mut LooperLoop<X>, mio::Token) -> NewPollable<X>>>,
     messages: Vec<(mio::Token, X::Message)>,
 }
 
@@ -108,7 +109,7 @@ impl<X: Context> LooperActions<X> {
         // TODO: drop
 
         for f in self.to_add {
-            looper.add(ev, |c, t| f(c, t));
+            looper.add(ev, |c, t| f.call_box((c, t)));
         }
 
         for (tk, m) in self.messages {
@@ -123,7 +124,7 @@ impl<X: Context> LooperActions<X> {
 
     /// Requests an add to be performed when the pollable returns.
     pub fn add<F: 'static>(&mut self, f: F)
-    where F: Fn(&mut LooperLoop<X>, mio::Token) -> NewPollable<X> {
+    where F: FnOnce(&mut LooperLoop<X>, mio::Token) -> NewPollable<X> {
         self.to_add.push(Box::new(f));
     }
 

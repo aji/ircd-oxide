@@ -37,11 +37,6 @@ pub struct Client {
     state: ClientState,
 }
 
-enum ClientState {
-    Pending(PendingData),
-    Active(ActiveData),
-}
-
 impl Client {
     /// Wraps an `TcpStream` as a `Client`
     pub fn new(ctx: &mut Top, sock: TcpStream, ev: &mut LooperLoop<Top>, name: mio::Token)
@@ -55,10 +50,6 @@ impl Client {
             state: ClientState::start()
         })
     }
-}
-
-impl ClientState {
-    fn start() -> ClientState { ClientState::Pending(PendingData::new()) }
 }
 
 impl Pollable<Top> for Client {
@@ -82,23 +73,41 @@ impl Pollable<Top> for Client {
             debug!("--> {}", String::from_utf8_lossy(ln));
             debug!("    {:?}", m);
 
-            // take_mut::take() will *exit* on panic, so no panics!
-            take_mut::take(state, |state| match state {
-                ClientState::Pending(mut data) => {
-                    data.handle_pending(ctx, &m, fmt, sock);
-                    data.try_promote(ctx, fmt, sock)
-                },
-
-                ClientState::Active(mut data) => {
-                    data.handle_active(ctx, &m, fmt, sock);
-                    ClientState::Active(data)
-                },
-            });
+            state.handle(ctx, &m, fmt, sock);
 
             None
         }));
 
         Ok(())
+    }
+}
+
+enum ClientState {
+    Pending(PendingData),
+    Active(ActiveData),
+}
+
+impl ClientState {
+    fn start() -> ClientState { ClientState::Pending(PendingData::new()) }
+
+    fn handle(
+        &mut self,
+        ctx: &mut Top,
+        m: &Message,
+        fmt: &IrcFormatter,
+        sock: &IrcStream,
+    ) {
+        match *self {
+            ClientState::Pending(ref mut data) => data.handle_pending(ctx, m, fmt, sock),
+            ClientState::Active(ref mut data) => data.handle_active(ctx, m, fmt, sock),
+        }
+
+        take_mut::take(self, |state| {
+            match state {
+                ClientState::Pending(data) => data.try_promote(ctx, fmt, sock),
+                other => other,
+            }
+        });
     }
 }
 
@@ -177,7 +186,7 @@ struct ActiveData {
 }
 
 impl ActiveData {
-    fn handle_active<'c>(
+    fn handle_active(
         &mut self,
         ctx: &mut Top,
         m: &Message,

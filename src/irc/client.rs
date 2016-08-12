@@ -16,7 +16,7 @@ use irc::global::IRCD;
 use irc::message::Message;
 use irc::net::IrcStream;
 use irc::numeric::*;
-use irc::output::IrcWriter;
+use irc::output::IrcFormatter;
 use looper::LooperActions;
 use looper::LooperLoop;
 use looper::Pollable;
@@ -32,6 +32,7 @@ fn to_string(v: &[u8]) -> Option<String> {
 /// An IRC client
 pub struct Client {
     name: mio::Token,
+    fmt: IrcFormatter,
     sock: IrcStream,
     state: ClientState,
 }
@@ -43,11 +44,16 @@ enum ClientState {
 
 impl Client {
     /// Wraps an `TcpStream` as a `Client`
-    pub fn new(sock: TcpStream, ev: &mut LooperLoop<Top>, name: mio::Token)
+    pub fn new(ctx: &mut Top, sock: TcpStream, ev: &mut LooperLoop<Top>, name: mio::Token)
     -> io::Result<Client> {
         let mut ircsock = IrcStream::new(sock);
         try!(ircsock.register(name, ev));
-        Ok(Client { name: name, sock: ircsock, state: ClientState::start() })
+        Ok(Client {
+            name: name,
+            fmt: ctx.ircd.formatter(),
+            sock: ircsock,
+            state: ClientState::start()
+        })
     }
 }
 
@@ -58,6 +64,7 @@ impl ClientState {
 impl Pollable<Top> for Client {
     /// Called to indicate data is ready on the client's socket.
     fn ready(&mut self, ctx: &mut Top, act: &mut LooperActions<Top>) -> io::Result<()> {
+        let fmt = &self.fmt;
         let sock = &self.sock;
         let state = &mut self.state;
 
@@ -78,12 +85,12 @@ impl Pollable<Top> for Client {
             // take_mut::take() will *exit* on panic, so no panics!
             take_mut::take(state, |state| match state {
                 ClientState::Pending(mut data) => {
-                    data.handle_pending(ctx, &m, sock);
-                    data.try_promote(ctx, sock)
+                    data.handle_pending(ctx, &m, fmt, sock);
+                    data.try_promote(ctx, fmt, sock)
                 },
 
                 ClientState::Active(mut data) => {
-                    data.handle_active(ctx, &m, sock);
+                    data.handle_active(ctx, &m, fmt, sock);
                     ClientState::Active(data)
                 },
             });
@@ -112,9 +119,13 @@ impl PendingData {
         }
     }
 
-    fn handle_pending(&mut self, ctx: &mut Top, m: &Message, sock: &IrcStream) {
-        let mut wr = ctx.ircd.writer(sock);
-
+    fn handle_pending(
+        &mut self,
+        ctx: &mut Top,
+        m: &Message,
+        fmt: &IrcFormatter,
+        sock: &IrcStream
+    ) {
         match m.verb {
             b"PASS" => match to_string(m.args[0]) {
                 Some(s) => self.password = Some(s),
@@ -141,7 +152,7 @@ impl PendingData {
         }
     }
 
-    fn try_promote(self, ctx: &mut Top, sock: &IrcStream) -> ClientState {
+    fn try_promote(self, ctx: &mut Top, fmt: &IrcFormatter, sock: &IrcStream) -> ClientState {
         let promotion = match Promotion::from_pending(self) {
             Ok(promotion) => promotion,
             Err(data) => {
@@ -152,9 +163,8 @@ impl PendingData {
 
         let identity = ctx.edit(|w| w.create_temp_identity());
 
-        let mut wr = ctx.ircd.writer(sock);
-        wr.numeric(RPL_WELCOME, &[]);
-        wr.numeric(RPL_ISUPPORT, &[b"CHANTYPES=#"]);
+        fmt.numeric(sock, RPL_WELCOME, &[]);
+        fmt.numeric(sock, RPL_ISUPPORT, &[b"CHANTYPES=#"]);
 
         ClientState::Active(ActiveData {
             identity: identity,
@@ -167,7 +177,13 @@ struct ActiveData {
 }
 
 impl ActiveData {
-    fn handle_active<'c>(&mut self, ctx: &mut Top, m: &Message, sock: &IrcStream) {
+    fn handle_active<'c>(
+        &mut self,
+        ctx: &mut Top,
+        m: &Message,
+        fmt: &IrcFormatter,
+        sock: &IrcStream
+    ) {
         match m.verb {
             b"JOIN" => ctx.edit(|world| {
                 let chan = {

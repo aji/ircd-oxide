@@ -21,7 +21,7 @@ impl Top {
     /// Creates a new `Top`
     pub fn new() -> Top {
         let ircd = IRCD::new();
-        let world = World::new(ircd.sid.clone());
+        let world = World::new(ircd.sid().clone());
 
         Top {
             ircd: ircd,

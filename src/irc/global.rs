@@ -12,30 +12,29 @@
 
 use common::Sid;
 use irc::output::IrcFormatter;
-use irc::output::IrcWriter;
-use irc::net::IrcStream;
 use state;
 
 /// The top level IRC server type
 pub struct IRCD {
-    fmt: IrcFormatter,
-
-    /// The `Sid` for this IRCD instance
-    pub sid: Sid,
+    name: String,
+    sid: Sid,
 }
 
 impl IRCD {
     /// Creates a new `IRCD`
     pub fn new() -> IRCD {
         IRCD {
-            fmt: IrcFormatter::new(b"oxide.irc"),
+            name: "oxide.irc".to_string(),
             sid: Sid::new("OXY")
         }
     }
 
-    /// Creates an `IrcWriter` for the given `IrcStream`
-    pub fn writer<'w, 'ircd, 'sock>(&'ircd self, sock: &'sock IrcStream)
-    -> IrcWriter<'w> where 'ircd: 'w, 'sock: 'w {
-        self.fmt.writer(None, sock)
-    }
+    /// The name of this server, e.g. hades.arpa, morgan.freenode.net, etc.
+    pub fn name(&self) -> &[u8] { self.name.as_bytes() }
+
+    /// The `Sid` for this IRCD instance
+    pub fn sid(&self) -> &Sid { &self.sid }
+
+    /// Creates an `IrcFormatter` using this `IRCD`'s configuration
+    pub fn formatter(&self) -> IrcFormatter { IrcFormatter::new(self.name()) }
 }

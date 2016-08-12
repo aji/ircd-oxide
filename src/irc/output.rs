@@ -19,45 +19,26 @@ use irc::net::IrcStream;
 
 /// A formatter for IRC lines
 pub struct IrcFormatter {
-    server: Vec<u8>
+    server: Vec<u8>,
+    nick: Option<Vec<u8>>,
 }
 
 impl IrcFormatter {
     /// Creates a new formatter using the given server name for
     /// server-originated messages.
     pub fn new(server: &[u8]) -> IrcFormatter {
-        IrcFormatter { server: server.to_vec() }
+        IrcFormatter { server: server.to_vec(), nick: None }
     }
 
-    /// Creates a writer to the given IRC stream that will use this IRC
-    /// formatter.
-    pub fn writer<'w, 'fmt, 'sock>(&'fmt self, nick: Option<&'w [u8]>, sock: &'sock IrcStream)
-    -> IrcWriter<'w> where 'fmt: 'w, 'sock: 'w {
-        IrcWriter {
-            fmt: self,
-            nick: nick,
-            sock: sock
-        }
-    }
-}
-
-/// A writer to an IRC stream, derived from an IRC formatter
-pub struct IrcWriter<'w> {
-    fmt: &'w IrcFormatter,
-    nick: Option<&'w [u8]>,
-    sock: &'w IrcStream,
-}
-
-impl<'w> IrcWriter<'w> {
     fn nick_bytes(&self) -> &[u8] {
-        match self.nick {
+        match self.nick.as_ref() {
             Some(n) => n,
             None => b"*",
         }
     }
 
     /// Sends a numeric to the client
-    pub fn numeric(&self, num: Numeric, args: &[&[u8]]) -> io::Result<()> {
+    pub fn numeric(&self, sock: &IrcStream, num: Numeric, args: &[&[u8]]) -> io::Result<()> {
         use std::mem;
 
         let mut msgbuf: [u8; 2048] = unsafe { mem::uninitialized() };
@@ -71,13 +52,13 @@ impl<'w> IrcWriter<'w> {
         let mut out = {
             let numstr = format!("{:03}", num.numeric());
             let len = sprintf(&mut outbuf[..], b":%s %s %s %s\r\n", &[
-                &self.fmt.server[..], numstr.as_bytes(), self.nick_bytes(), msg
+                &self.server[..], numstr.as_bytes(), self.nick_bytes(), msg
             ]);
             &outbuf[..len]
         };
 
         while out.len() > 0 {
-            let len = try!(self.sock.write(out));
+            let len = try!(sock.write(out));
             out = &out[len..];
         }
 
@@ -85,7 +66,7 @@ impl<'w> IrcWriter<'w> {
     }
 
     /// Sends a notice to the client, from the server
-    pub fn snotice(&self, fmt: &[u8], args: &[&[u8]]) -> io::Result<()> {
+    pub fn snotice(&self, sock: &IrcStream, fmt: &[u8], args: &[&[u8]]) -> io::Result<()> {
         use std::mem;
 
         let mut msgbuf: [u8; 2048] = unsafe { mem::uninitialized() };
@@ -98,13 +79,13 @@ impl<'w> IrcWriter<'w> {
 
         let mut out = {
             let len = sprintf(&mut outbuf[..], b":%s NOTICE %s %s\r\n", &[
-                &self.fmt.server[..], self.nick_bytes(), msg
+                &self.server[..], self.nick_bytes(), msg
             ]);
             &outbuf[..len]
         };
 
         while out.len() > 0 {
-            let len = try!(self.sock.write(out));
+            let len = try!(sock.write(out));
             out = &out[len..];
         }
 
@@ -112,6 +93,7 @@ impl<'w> IrcWriter<'w> {
     }
 }
 
+// copies all the bytes from `fr` to `to`
 fn splice<'o, 'i, O, I>(to: &mut O, mut fr: I) -> usize
 where O: Iterator<Item=&'o mut u8>, I: Iterator<Item=&'i u8> {
     let mut count = 0;

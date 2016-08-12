@@ -52,7 +52,7 @@ impl Pollable<Top> for Listener {
             sock.expect("accept failed (would block)").0
         };
 
-        act.add(move |ev, tk| {
+        act.add(move |_, ev, tk| {
             match Client::new(sock, ev, tk) {
                 Ok(c) => Ok(Box::new(c)),
                 Err(e) => Err(e),

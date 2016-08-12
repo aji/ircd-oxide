@@ -136,25 +136,13 @@ impl PendingData {
         sock: &IrcStream
     ) {
         match m.verb {
-            b"PASS" => match to_string(m.args[0]) {
-                Some(s) => self.password = Some(s),
-                None => info!("password must be valid UTF-8!"),
-            },
+            "PASS" => self.password = Some(m.args[0].to_string()),
 
-            b"NICK" => match to_string(m.args[0]) {
-                Some(s) => self.nickname = Some(s),
-                None => info!("nickname must be valid UTF-8!"),
-            },
+            "NICK" => self.nickname = Some(m.args[0].to_string()),
 
-            b"USER" => {
-                let user = to_string(m.args[0]);
-                let real = to_string(m.args[3]);
-                if user.is_some() && real.is_some() {
-                    self.username = user;
-                    self.realname = real;
-                } else {
-                    info!("username and realname must be valid UTF-8!");
-                }
+            "USER" => {
+                self.username = Some(m.args[0].to_string());
+                self.realname = Some(m.args[3].to_string());
             },
 
             _ => { }
@@ -194,20 +182,15 @@ impl ActiveData {
         sock: &IrcStream
     ) {
         match m.verb {
-            b"JOIN" => ctx.edit(|world| {
-                let chan = {
-                    let chname = match to_string(m.args[0]) {
-                        Some(name) => name,
-                        None => { info!("channel name must be valid UTF-8!"); return; }
-                    };
+            "JOIN" => ctx.edit(|world| {
+                let chname = m.args[0].to_string();
 
-                    match world.channel_name_owner(&chname).cloned() {
-                        Some(chan) => chan,
-                        None => {
-                            let chan = world.create_channel();
-                            world.channel_claim(chan.clone(), chname.clone());
-                            chan
-                        }
+                let chan = match world.channel_name_owner(&chname).cloned() {
+                    Some(chan) => chan,
+                    None => {
+                        let chan = world.create_channel();
+                        world.channel_claim(chan.clone(), chname.clone());
+                        chan
                     }
                 };
 

@@ -8,6 +8,8 @@
 
 use std::fmt;
 
+pub type ParseResult<T> = Result<T, &'static str>;
+
 /// Helper for the message parser
 struct Scanner<'a> {
     s: &'a [u8],
@@ -18,9 +20,9 @@ struct Scanner<'a> {
 #[derive(PartialEq)]
 pub struct Message<'a> {
     /// The verb portion of a message, specifying which action to take.
-    pub verb:  &'a [u8],
+    pub verb:  &'a str,
     /// The arguments to the verb.
-    pub args:  Vec<&'a [u8]>,
+    pub args:  Vec<&'a str>,
 }
 
 impl<'a> Scanner<'a> {
@@ -53,7 +55,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn chomp(&mut self) -> &'a [u8] {
+    fn chomp(&mut self) -> ParseResult<&'a str> {
         self.skip_spaces();
         let start = self.i;
         while !self.empty() && !(self.s[self.i] as char).is_whitespace() {
@@ -62,32 +64,39 @@ impl<'a> Scanner<'a> {
         let end = self.i;
         self.skip_spaces();
 
-        &self.s[start..end]
+        match ::std::str::from_utf8(&self.s[start..end]) {
+            Ok(s) => Ok(s),
+            Err(_) => Err("slice is not valid UTF-8"),
+        }
     }
 
-    fn chomp_remaining(&mut self) -> &'a [u8] {
+    fn chomp_remaining(&mut self) -> ParseResult<&'a str> {
         let i = self.i;
         self.i = self.s.len();
-        &self.s[i..]
+
+        match ::std::str::from_utf8(&self.s[i..]) {
+            Ok(s) => Ok(s),
+            Err(_) => Err("slice is not valid UTF-8"),
+        }
     }
 }
 
 impl<'a> Message<'a> {
     /// Parses the byte slice into a `Message`
-    pub fn parse(spec: &'a [u8]) -> Result<Message<'a>, &'static str> {
+    pub fn parse(spec: &'a [u8]) -> ParseResult<Message<'a>> {
         let mut scan = Scanner::new(spec);
 
         scan.skip_spaces();
 
-        let verb = scan.chomp();
+        let verb = try!(scan.chomp());
 
         let mut args = Vec::new();
         while !scan.empty() {
             args.push(if scan.peek() == b':' {
                 scan.skip();
-                scan.chomp_remaining()
+                try!(scan.chomp_remaining())
             } else {
-                scan.chomp()
+                try!(scan.chomp())
             });
         }
 
@@ -100,9 +109,9 @@ impl<'a> Message<'a> {
 
 impl<'a> fmt::Debug for Message<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "Message({:?}", String::from_utf8_lossy(self.verb)));
+        try!(write!(f, "Message({:?}", self.verb));
         for s in self.args.iter() {
-            try!(write!(f, ", {:?}", String::from_utf8_lossy(s)));
+            try!(write!(f, ", {:?}", s));
         }
         try!(write!(f, ")"));
         Ok(())
@@ -112,39 +121,44 @@ impl<'a> fmt::Debug for Message<'a> {
 #[test]
 fn message_parse_easy() {
     assert_eq!(Message {
-        verb: b"PING",
-        args: vec![b"123"],
+        verb: "PING",
+        args: vec!["123"],
     }, Message::parse(b"PING 123").unwrap());
 }
 
 #[test]
 fn message_parse_trailing() {
     assert_eq!(Message {
-        verb: b"PING",
-        args: vec![b"this has spaces"],
+        verb: "PING",
+        args: vec!["this has spaces"],
     }, Message::parse(b"PING :this has spaces").unwrap());
 }
 
 #[test]
 fn message_parse_with_spaces() {
     assert_eq!(Message {
-        verb: b"PING",
-        args: vec![b"this", b"has", b"spaces"],
+        verb: "PING",
+        args: vec!["this", "has", "spaces"],
     }, Message::parse(b"PING this has spaces").unwrap());
 }
 
 #[test]
 fn message_parse_dumb_client() {
     assert_eq!(Message {
-        verb: b"PING",
-        args: vec![b"this", b"has", b"spaces  "],
+        verb: "PING",
+        args: vec!["this", "has", "spaces  "],
     }, Message::parse(b"   PING       this  has :spaces  ").unwrap());
 }
 
 #[test]
 fn message_parse_client_still_dumb() {
     assert_eq!(Message {
-        verb: b"PING",
-        args: vec![b"this", b"has", b"spaces"],
+        verb: "PING",
+        args: vec!["this", "has", "spaces"],
     }, Message::parse(b"   PING this has spaces          ").unwrap());
+}
+
+#[test]
+fn message_parse_invalid_utf8() {
+    assert!(Message::parse(b"\xff\xff\xff\xff").is_err());
 }

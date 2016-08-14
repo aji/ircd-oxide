@@ -36,13 +36,12 @@ fn main() {
 
     ircd::looper::run(
         ircd::run::Top::new(),
-        |looper, ev| {
-            looper.add(ev, |_, ev, tk| {
-                match ircd::irc::listen::Listener::new(("0.0.0.0", 5050), ev, tk) {
-                    Ok(l) => Ok(Box::new(l)),
-                    Err(e) => Err(e),
-                }
-            })
-        }
+        |looper, ev| looper.add(ev, |_, ev, tk| {
+            let listener = ircd::irc::listen::Listener::new(("0.0.0.0", 5050), ev, tk);
+            match listener {
+                Ok(l) => Ok(Box::new(l)),
+                Err(e) => Err(e),
+            }
+        })
     ).expect("loop exited with an error");
 }

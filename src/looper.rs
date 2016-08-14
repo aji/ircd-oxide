@@ -38,7 +38,7 @@ impl<X: Context> Looper<X> {
     /// and the generated `mio` token. The function, in turn, returns the pollable to be
     /// associated with the token. The function should also ensure that the pollable is correctly
     /// registered with the event loop.
-    pub fn add<F>(&mut self, ev: &mut LooperLoop<X>, mut f: F) -> io::Result<()>
+    pub fn add<F>(&mut self, ev: &mut LooperLoop<X>, f: F) -> io::Result<()>
     where F: FnOnce(&mut X, &mut LooperLoop<X>, mio::Token) -> NewPollable<X> {
         let token = mio::Token(random());
         let p = try!(f(&mut self.context, ev, token));
@@ -105,11 +105,12 @@ impl<X: Context> LooperActions<X> {
         }
     }
 
-    fn apply(self, looper: &mut Looper<X>, ev: &mut LooperLoop<X>, tk: mio::Token) {
+    fn apply(self, looper: &mut Looper<X>, ev: &mut LooperLoop<X>, _tk: mio::Token) {
         // TODO: drop
 
         for f in self.to_add.into_iter() {
-            looper.add(ev, |x, c, t| f.call_box((x, c, t)));
+            // TODO: figure out what to do with errors here
+            let _ = looper.add(ev, |x, c, t| f.call_box((x, c, t)));
         }
 
         for (tk, m) in self.messages {
@@ -147,7 +148,7 @@ pub trait Pollable<X: Context> {
 
     /// Called to deliver a message to this pollable. The message format is defined by
     /// the context.
-    fn message(&mut self, ctx: &mut X, msg: X::Message) { }
+    fn message(&mut self, _ctx: &mut X, _msg: X::Message) { }
 }
 
 /// A function to run a simple event loop

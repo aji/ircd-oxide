@@ -20,7 +20,6 @@ use run::Top;
 
 /// A listener
 pub struct Listener {
-    name: mio::Token,
     sock: TcpListener
 }
 
@@ -40,12 +39,12 @@ impl Listener {
 
         try!(ev.register(&sock, name, mio::EventSet::readable(), mio::PollOpt::level()));
 
-        Ok(Listener { name: name, sock: sock })
+        Ok(Listener { sock: sock })
     }
 }
 
 impl Pollable<Top> for Listener {
-    fn ready(&mut self, ctx: &mut Top, act: &mut LooperActions<Top>) -> io::Result<()> {
+    fn ready(&mut self, _: &mut Top, act: &mut LooperActions<Top>) -> io::Result<()> {
         let sock = {
             let sock = try!(self.sock.accept());
             // TODO: don't expect, maybe?

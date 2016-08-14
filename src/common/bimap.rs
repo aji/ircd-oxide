@@ -18,9 +18,7 @@ use std::hash::Hash;
 type Ti = u32;
 type Ai = u32;
 type Bi = u32;
-
-static nothingA: [Ai; 0] = [];
-static nothingB: [Bi; 0] = [];
+static NOTHING: [u32; 0] = [];
 
 pub struct Bimap<A: Eq + Hash, B: Eq + Hash, T> {
     aa: HashMap<A, Ai>,
@@ -102,14 +100,14 @@ impl<A: Eq + Hash, B: Eq + Hash, T> Bimap<A, B, T> {
     // all t where \exists a such that m(a, b) = t
     pub fn all_a(&self, b: &B) -> AllA<T> {
         let bi = self.bb.get(b).cloned().unwrap_or(0);
-        let iter = self.bpair.get(&bi).map(|v| v.iter()).unwrap_or(nothingA.iter());
+        let iter = self.bpair.get(&bi).map(|v| v.iter()).unwrap_or(NOTHING.iter());
         AllA::new(&self.pairs, &self.tt, bi, iter)
     }
 
     // all t where \exists b such that m(a, b) = t
     pub fn all_b(&self, a: &A) -> AllB<T> {
         let ai = self.aa.get(a).cloned().unwrap_or(0);
-        let iter = self.apair.get(&ai).map(|v| v.iter()).unwrap_or(nothingB.iter());
+        let iter = self.apair.get(&ai).map(|v| v.iter()).unwrap_or(NOTHING.iter());
         AllB::new(&self.pairs, &self.tt, ai, iter)
     }
 

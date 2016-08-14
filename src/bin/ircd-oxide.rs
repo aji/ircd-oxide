@@ -44,5 +44,5 @@ fn main() {
                 }
             })
         }
-    );
+    ).expect("loop exited with an error");
 }

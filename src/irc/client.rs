@@ -24,10 +24,6 @@ use state::id::Id;
 use state::identity::Identity;
 use state::world::WorldView;
 
-fn to_string(v: &[u8]) -> Option<String> {
-    String::from_utf8(v.to_vec()).ok()
-}
-
 /// An IRC client
 pub struct Client {
     name: mio::Token,
@@ -40,7 +36,7 @@ impl Client {
     /// Wraps an `TcpStream` as a `Client`
     pub fn new(ctx: &mut Top, sock: TcpStream, ev: &mut LooperLoop<Top>, name: mio::Token)
     -> io::Result<Client> {
-        let mut ircsock = IrcStream::new(sock);
+        let ircsock = IrcStream::new(sock);
         try!(ircsock.register(name, ev));
         Ok(Client {
             name: name,
@@ -129,10 +125,10 @@ impl PendingData {
 
     fn handle_pending(
         &mut self,
-        ctx: &mut Top,
+        _ctx: &mut Top,
         m: &Message,
-        fmt: &IrcFormatter,
-        sock: &IrcStream
+        _fmt: &IrcFormatter,
+        _sock: &IrcStream
     ) {
         match m.verb {
             "PASS" => self.password = Some(m.args[0].to_string()),
@@ -157,8 +153,16 @@ impl PendingData {
             }
         };
 
+        // TODO: actually process the promotion
+        let _ = promotion.password;
+        let _ = promotion.nickname;
+        let _ = promotion.username;
+        let _ = promotion.realname;
+
         let identity = ctx.edit(|w| w.create_temp_identity());
 
+        // unused_must_use can be cleaned up when try_promote is able to return something other
+        // than ClientState, or when the actual output part is moved away from this function.
         rpl_welcome!(fmt, sock);
         rpl_isupport!(fmt, sock, "CHANTYPES=#");
 
@@ -177,8 +181,8 @@ impl ActiveData {
         &mut self,
         ctx: &mut Top,
         m: &Message,
-        fmt: &IrcFormatter,
-        sock: &IrcStream
+        _fmt: &IrcFormatter,
+        _sock: &IrcStream
     ) {
         match m.verb {
             "JOIN" => ctx.edit(|world| {

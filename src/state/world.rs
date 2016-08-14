@@ -71,7 +71,6 @@ pub struct World {
     chanusers: ChanUserSet,
 
     // strictly local:
-    sid: Sid,
     idgen_identity: IdGenerator<Identity>,
     idgen_channel: IdGenerator<Channel>,
 }
@@ -86,7 +85,6 @@ impl World {
             channames: ClaimSet::new(sid),
             chanusers: ChanUserSet::new(),
 
-            sid: sid,
             idgen_identity: IdGenerator::new(sid),
             idgen_channel: IdGenerator::new(sid),
         }

@@ -6,6 +6,9 @@
 
 //! Logic for handling specifics of the IRC client protocol
 
+#[macro_use]
+pub mod numeric;
+
 pub mod cap;
 pub mod client;
 pub mod global;
@@ -13,7 +16,6 @@ pub mod linebuf;
 pub mod listen;
 pub mod message;
 pub mod net;
-pub mod numeric;
 pub mod output;
 
 use std::cmp;

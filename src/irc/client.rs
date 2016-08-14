@@ -15,7 +15,6 @@ use take_mut;
 use irc::global::IRCD;
 use irc::message::Message;
 use irc::net::IrcStream;
-use irc::numeric::*;
 use irc::output::IrcFormatter;
 use looper::LooperActions;
 use looper::LooperLoop;
@@ -160,8 +159,8 @@ impl PendingData {
 
         let identity = ctx.edit(|w| w.create_temp_identity());
 
-        fmt.numeric(sock, RPL_WELCOME, &[]);
-        fmt.numeric(sock, RPL_ISUPPORT, &[b"CHANTYPES=#"]);
+        rpl_welcome!(fmt, sock);
+        rpl_isupport!(fmt, sock, "CHANTYPES=#");
 
         ClientState::Active(ActiveData {
             identity: identity,

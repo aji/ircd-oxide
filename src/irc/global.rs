@@ -30,7 +30,7 @@ impl IRCD {
     }
 
     /// The name of this server, e.g. hades.arpa, morgan.freenode.net, etc.
-    pub fn name(&self) -> &[u8] { self.name.as_bytes() }
+    pub fn name(&self) -> &str { self.name.as_str() }
 
     /// The `Sid` for this IRCD instance
     pub fn sid(&self) -> &Sid { &self.sid }

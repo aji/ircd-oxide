@@ -64,12 +64,12 @@ impl<X: Context> mio::Handler for Looper<X> {
 
         match self.pollables.get_mut(&tk) {
             Some(p) => {
-                self.context.will_deliver_event();
-                if let Err(e) = p.ready(&mut self.context, &mut actions) {
-                    error!("dropping pollable {:?}: {}", tk, e);
-                    actions.drop(tk);
-                }
-                self.context.event_delivered(&mut actions);
+                self.context.on_event(&mut actions, |ctx, act| {
+                    if let Err(e) = p.ready(ctx, act) {
+                        error!("dropping pollable {:?}: {}", tk, e);
+                        act.drop(tk);
+                    }
+                });
             },
 
             None => {
@@ -143,10 +143,10 @@ pub trait Context: Sized {
     type Message;
 
     /// Called when a pollable will be handling an event
-    fn will_deliver_event(&mut self) { }
-
-    /// Called when a pollable has handled an event
-    fn event_delivered(&mut self, _act: &mut LooperActions<Self>) { }
+    fn on_event<F>(&mut self, act: &mut LooperActions<Self>, cb: F)
+    where F: FnOnce(&mut Self, &mut LooperActions<Self>) {
+        cb(self, act);
+    }
 }
 
 /// A trait that all `Looper`-capable pollables must implement.

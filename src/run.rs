@@ -8,6 +8,7 @@
 
 use irc::global::IRCD;
 use looper::Context;
+use looper::LooperActions;
 use state::world::World;
 use state::world::WorldGuard;
 
@@ -41,4 +42,11 @@ impl Top {
 
 impl Context for Top {
     type Message = ();
+
+    fn on_event<F>(&mut self, act: &mut LooperActions<Top>, cb: F)
+    where F: FnOnce(&mut Top, &mut LooperActions<Top>) {
+        info!("event will be handled");
+        cb(self, act);
+        info!("event has been handled");
+    }
 }

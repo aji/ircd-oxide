@@ -16,7 +16,7 @@ use irc::client::Client;
 use looper::LooperActions;
 use looper::LooperLoop;
 use looper::Pollable;
-use run::Top;
+use top;
 
 /// A listener
 pub struct Listener {
@@ -25,7 +25,7 @@ pub struct Listener {
 
 impl Listener {
     /// Wraps a mio `TcpListener` as a `Listener`
-    pub fn new<A: ToSocketAddrs>(addr: A, ev: &mut LooperLoop<Top>, name: mio::Token)
+    pub fn new<A: ToSocketAddrs>(addr: A, ev: &mut LooperLoop, name: mio::Token)
     -> io::Result<Listener> {
         let sock = {
             let mut addrs = try!(ToSocketAddrs::to_socket_addrs(&addr));
@@ -43,8 +43,8 @@ impl Listener {
     }
 }
 
-impl Pollable<Top> for Listener {
-    fn ready(&mut self, _: &mut Top, act: &mut LooperActions<Top>) -> io::Result<()> {
+impl Pollable for Listener {
+    fn ready(&mut self, _: &mut top::Context, act: &mut LooperActions) -> io::Result<()> {
         let sock = {
             let sock = try!(self.sock.accept());
             // TODO: don't expect, maybe?

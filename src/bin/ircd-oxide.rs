@@ -35,7 +35,7 @@ fn main() {
     logger::init().expect("failed to initialize logger");
 
     ircd::looper::run(
-        ircd::run::Top::new(),
+        ircd::top::Context::new(),
         |looper, ev| looper.add(ev, |_, ev, tk| {
             let listener = ircd::irc::listen::Listener::new(("0.0.0.0", 5050), ev, tk);
             match listener {

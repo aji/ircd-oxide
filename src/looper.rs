@@ -6,28 +6,42 @@
 
 //! Event loop: ergonomic `mio` wrapper.
 
+// This API can be genericized when lifetime parameters are supported with associated types.
+// I had wanted a trait that had something like this:
+//
+//     trait Context {
+//         type Guard<'g>;
+//         fn start<'a: 'g>(&'a mut self) -> Guard<'g>;
+//     }
+//
+// After wrestling the compiler for too long, I decided it wasn't possible (not easily anyway)
+// and un-genericized this API. It wouldn't be too much work to adapt Looper to be more generic,
+// if you don't need some kind of event-scoped guard type.
+
 use mio;
 use rand::random;
 use std::boxed::FnBox;
 use std::collections::HashMap;
 use std::io;
 
+use top;
+
 /// Type alias for the `mio` event loop
-pub type LooperLoop<X> = mio::EventLoop<Looper<X>>;
+pub type LooperLoop = mio::EventLoop<Looper>;
 
 /// Type alias for the return type of `add` functions
-pub type NewPollable<X> = io::Result<Box<Pollable<X>>>;
+pub type NewPollable = io::Result<Box<Pollable>>;
 
 /// `Looper` is the core of this event loop API. It owns a user-defined context and a
 /// family of pollables named with `mio::Token`s.
-pub struct Looper<X: Context> {
-    pollables: HashMap<mio::Token, Box<Pollable<X>>>,
-    context: X
+pub struct Looper {
+    pollables: HashMap<mio::Token, Box<Pollable>>,
+    context: top::Context
 }
 
-impl<X: Context> Looper<X> {
+impl Looper {
     /// Creates a new `Looper` using the given context
-    pub fn new(ctx: X) -> Looper<X> {
+    pub fn new(ctx: top::Context) -> Looper {
         Looper {
             pollables: HashMap::new(),
             context: ctx,
@@ -38,8 +52,8 @@ impl<X: Context> Looper<X> {
     /// and the generated `mio` token. The function, in turn, returns the pollable to be
     /// associated with the token. The function should also ensure that the pollable is correctly
     /// registered with the event loop.
-    pub fn add<F>(&mut self, ev: &mut LooperLoop<X>, f: F) -> io::Result<()>
-    where F: FnOnce(&mut X, &mut LooperLoop<X>, mio::Token) -> NewPollable<X> {
+    pub fn add<F>(&mut self, ev: &mut LooperLoop, f: F) -> io::Result<()>
+    where F: FnOnce(&mut top::Context, &mut LooperLoop, mio::Token) -> NewPollable {
         let token = mio::Token(random());
         let p = try!(f(&mut self.context, ev, token));
         self.pollables.insert(token, p);
@@ -47,7 +61,7 @@ impl<X: Context> Looper<X> {
     }
 
     /// Sends a message to the named pollable.
-    pub fn signal(&mut self, tk: mio::Token, msg: X::Message) {
+    pub fn signal(&mut self, tk: mio::Token, msg: top::Message) {
         match self.pollables.get_mut(&tk) {
             Some(p) => p.message(&mut self.context, msg),
             None => warn!("got signal for token we don't know about: {:?}", tk),
@@ -55,17 +69,17 @@ impl<X: Context> Looper<X> {
     }
 }
 
-impl<X: Context> mio::Handler for Looper<X> {
+impl mio::Handler for Looper {
     type Timeout = ();
     type Message = ();
 
-    fn ready(&mut self, ev: &mut LooperLoop<X>, tk: mio::Token, _: mio::EventSet) {
+    fn ready(&mut self, ev: &mut LooperLoop, tk: mio::Token, _: mio::EventSet) {
         let mut actions = LooperActions::new(self);
 
         match self.pollables.get_mut(&tk) {
             Some(p) => {
-                self.context.on_event(&mut actions, |ctx, act| {
-                    if let Err(e) = p.ready(ctx, act) {
+                self.context.on_event(&mut actions, |guard, act| {
+                    if let Err(e) = p.ready(guard, act) {
                         error!("dropping pollable {:?}: {}", tk, e);
                         act.drop(tk);
                     }
@@ -92,14 +106,14 @@ impl<X: Context> mio::Handler for Looper<X> {
 /// the event (i.e. when the mutable borrow of the pollable ends). A significant consequence is
 /// that, while the code may read like actions are being performed then and there in the pollable
 /// handler, they're actually being deferred.
-pub struct LooperActions<X: Context> {
+pub struct LooperActions {
     to_drop: Vec<mio::Token>,
-    to_add: Vec<Box<FnBox(&mut X, &mut LooperLoop<X>, mio::Token) -> NewPollable<X>>>,
-    messages: Vec<(mio::Token, X::Message)>,
+    to_add: Vec<Box<FnBox(&mut top::Context, &mut LooperLoop, mio::Token) -> NewPollable>>,
+    messages: Vec<(mio::Token, top::Message)>,
 }
 
-impl<X: Context> LooperActions<X> {
-    fn new(_: &mut Looper<X>) -> LooperActions<X> {
+impl LooperActions {
+    fn new(_: &mut Looper) -> LooperActions {
         LooperActions {
             to_drop: Vec::new(),
             to_add: Vec::new(),
@@ -107,7 +121,7 @@ impl<X: Context> LooperActions<X> {
         }
     }
 
-    fn apply(self, looper: &mut Looper<X>, ev: &mut LooperLoop<X>, _tk: mio::Token) {
+    fn apply(self, looper: &mut Looper, ev: &mut LooperLoop, _tk: mio::Token) {
         // TODO: drop
 
         for f in self.to_add.into_iter() {
@@ -127,41 +141,29 @@ impl<X: Context> LooperActions<X> {
 
     /// Requests an add to be performed when the pollable returns.
     pub fn add<F: 'static>(&mut self, f: F)
-    where F: FnOnce(&mut X, &mut LooperLoop<X>, mio::Token) -> NewPollable<X> {
+    where F: FnOnce(&mut top::Context, &mut LooperLoop, mio::Token) -> NewPollable {
         self.to_add.push(Box::new(f));
     }
 
     /// Requests the given pollable be signaled.
-    pub fn signal(&mut self, tk: mio::Token, msg: X::Message) {
+    pub fn signal(&mut self, tk: mio::Token, msg: top::Message) {
         self.messages.push((tk, msg));
     }
 }
 
-/// A trait that all `Looper` user data must implement.
-pub trait Context: Sized {
-    /// The type of message that pollables can send to each other.
-    type Message;
-
-    /// Called when a pollable will be handling an event
-    fn on_event<F>(&mut self, act: &mut LooperActions<Self>, cb: F)
-    where F: FnOnce(&mut Self, &mut LooperActions<Self>) {
-        cb(self, act);
-    }
-}
-
 /// A trait that all `Looper`-capable pollables must implement.
-pub trait Pollable<X: Context> {
+pub trait Pollable {
     /// Called when an event is ready that the pollable has requested
-    fn ready(&mut self, ctx: &mut X, act: &mut LooperActions<X>) -> io::Result<()>;
+    fn ready(&mut self, ctx: &mut top::Guard, act: &mut LooperActions) -> io::Result<()>;
 
     /// Called to deliver a message to this pollable. The message format is defined by
     /// the context.
-    fn message(&mut self, _ctx: &mut X, _msg: X::Message) { }
+    fn message(&mut self, _ctx: &mut top::Context, _msg: top::Message) { }
 }
 
 /// A function to run a simple event loop
-pub fn run<X: Context, F>(ctx: X, init: F) -> io::Result<()>
-where F: Fn(&mut Looper<X>, &mut LooperLoop<X>) -> io::Result<()> {
+pub fn run<F>(ctx: top::Context, init: F) -> io::Result<()>
+where F: Fn(&mut Looper, &mut LooperLoop) -> io::Result<()> {
     let mut looper = Looper::new(ctx);
     let mut ev = try!(mio::EventLoop::new());
 

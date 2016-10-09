@@ -19,10 +19,10 @@ use irc::output::IrcFormatter;
 use looper::LooperActions;
 use looper::LooperLoop;
 use looper::Pollable;
-use run::Top;
 use state::id::Id;
 use state::identity::Identity;
 use state::world::WorldView;
+use top;
 
 /// An IRC client
 pub struct Client {
@@ -34,7 +34,7 @@ pub struct Client {
 
 impl Client {
     /// Wraps an `TcpStream` as a `Client`
-    pub fn new(ctx: &mut Top, sock: TcpStream, ev: &mut LooperLoop<Top>, name: mio::Token)
+    pub fn new(ctx: &mut top::Context, sock: TcpStream, ev: &mut LooperLoop, name: mio::Token)
     -> io::Result<Client> {
         let ircsock = IrcStream::new(sock);
         try!(ircsock.register(name, ev));
@@ -47,9 +47,9 @@ impl Client {
     }
 }
 
-impl Pollable<Top> for Client {
+impl Pollable for Client {
     /// Called to indicate data is ready on the client's socket.
-    fn ready(&mut self, ctx: &mut Top, act: &mut LooperActions<Top>) -> io::Result<()> {
+    fn ready(&mut self, ctx: &mut top::Context, act: &mut LooperActions) -> io::Result<()> {
         let fmt = &self.fmt;
         let sock = &self.sock;
         let state = &mut self.state;
@@ -87,7 +87,7 @@ impl ClientState {
 
     fn handle(
         &mut self,
-        ctx: &mut Top,
+        ctx: &mut top::Context,
         m: &Message,
         fmt: &IrcFormatter,
         sock: &IrcStream,
@@ -125,7 +125,7 @@ impl PendingData {
 
     fn handle_pending(
         &mut self,
-        _ctx: &mut Top,
+        _ctx: &mut top::Context,
         m: &Message,
         _fmt: &IrcFormatter,
         _sock: &IrcStream
@@ -144,7 +144,8 @@ impl PendingData {
         }
     }
 
-    fn try_promote(self, ctx: &mut Top, fmt: &IrcFormatter, sock: &IrcStream) -> ClientState {
+    fn try_promote(self, ctx: &mut top::Context, fmt: &IrcFormatter, sock: &IrcStream)
+    -> ClientState {
         let promotion = match Promotion::from_pending(self) {
             Ok(promotion) => promotion,
             Err(data) => {
@@ -179,7 +180,7 @@ struct ActiveData {
 impl ActiveData {
     fn handle_active(
         &mut self,
-        ctx: &mut Top,
+        ctx: &mut top::Context,
         m: &Message,
         _fmt: &IrcFormatter,
         _sock: &IrcStream

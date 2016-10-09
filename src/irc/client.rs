@@ -75,6 +75,10 @@ impl Pollable for Client {
 
         Ok(())
     }
+
+    fn deregister(&self, ev: &mut LooperLoop) -> io::Result<()> {
+        self.sock.deregister(ev)
+    }
 }
 
 enum ClientState {

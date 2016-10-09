@@ -60,4 +60,8 @@ impl Pollable for Listener {
 
         Ok(())
     }
+
+    fn deregister(&self, ev: &mut LooperLoop) -> io::Result<()> {
+        ev.deregister(&self.sock)
+    }
 }

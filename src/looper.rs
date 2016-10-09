@@ -48,6 +48,14 @@ impl Looper {
         }
     }
 
+    /// Drops the named pollable from the event loop
+    pub fn drop(&mut self, ev: &mut LooperLoop, tk: mio::Token) -> io::Result<()> {
+        match self.pollables.remove(&tk) {
+            Some(p) => p.deregister(ev),
+            None => Ok(())
+        }
+    }
+
     /// Adds a pollable to this `Looper`. The function is called with the `mio` event loop
     /// and the generated `mio` token. The function, in turn, returns the pollable to be
     /// associated with the token. The function should also ensure that the pollable is correctly
@@ -122,10 +130,13 @@ impl LooperActions {
     }
 
     fn apply(self, looper: &mut Looper, ev: &mut LooperLoop, _tk: mio::Token) {
-        // TODO: drop
+        // TODO: figure out what to do with errors here
+
+        for tk in self.to_drop.into_iter() {
+            let _ = looper.drop(ev, tk);
+        }
 
         for f in self.to_add.into_iter() {
-            // TODO: figure out what to do with errors here
             let _ = looper.add(ev, |x, c, t| f.call_box((x, c, t)));
         }
 
@@ -159,6 +170,9 @@ pub trait Pollable {
     /// Called to deliver a message to this pollable. The message format is defined by
     /// the context.
     fn message(&mut self, _ctx: &mut top::Context, _msg: top::Message) { }
+
+    /// Called when the pollable should remove itself from the event loop
+    fn deregister(&self, ev: &mut LooperLoop) -> io::Result<()>;
 }
 
 /// A function to run a simple event loop

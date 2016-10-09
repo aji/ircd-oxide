@@ -49,6 +49,12 @@ impl IrcStream {
         )
     }
 
+    /// Deregisters the `IrcStream` with the given `EventLoop`
+    pub fn deregister<H>(&self, ev: &mut mio::EventLoop<H>)
+    -> io::Result<()> where H: mio::Handler {
+        ev.deregister(&*self.sock.borrow())
+    }
+
     /// Returns true if the `IrcStream` is empty
     pub fn empty(&self) -> bool {
         self.empty.get()

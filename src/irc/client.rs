@@ -49,7 +49,7 @@ impl Client {
 
 impl Pollable for Client {
     /// Called to indicate data is ready on the client's socket.
-    fn ready(&mut self, ctx: &mut top::Context, act: &mut LooperActions) -> io::Result<()> {
+    fn ready(&mut self, ctx: &mut top::Guard, act: &mut LooperActions) -> io::Result<()> {
         let fmt = &self.fmt;
         let sock = &self.sock;
         let state = &mut self.state;
@@ -87,7 +87,7 @@ impl ClientState {
 
     fn handle(
         &mut self,
-        ctx: &mut top::Context,
+        ctx: &mut top::Guard,
         m: &Message,
         fmt: &IrcFormatter,
         sock: &IrcStream,
@@ -125,7 +125,7 @@ impl PendingData {
 
     fn handle_pending(
         &mut self,
-        _ctx: &mut top::Context,
+        _ctx: &mut top::Guard,
         m: &Message,
         _fmt: &IrcFormatter,
         _sock: &IrcStream
@@ -144,7 +144,7 @@ impl PendingData {
         }
     }
 
-    fn try_promote(self, ctx: &mut top::Context, fmt: &IrcFormatter, sock: &IrcStream)
+    fn try_promote(self, ctx: &mut top::Guard, fmt: &IrcFormatter, sock: &IrcStream)
     -> ClientState {
         let promotion = match Promotion::from_pending(self) {
             Ok(promotion) => promotion,
@@ -160,7 +160,7 @@ impl PendingData {
         let _ = promotion.username;
         let _ = promotion.realname;
 
-        let identity = ctx.edit(|w| w.create_temp_identity());
+        let identity = ctx.world.create_temp_identity();
 
         // unused_must_use can be cleaned up when try_promote is able to return something other
         // than ClientState, or when the actual output part is moved away from this function.
@@ -180,26 +180,26 @@ struct ActiveData {
 impl ActiveData {
     fn handle_active(
         &mut self,
-        ctx: &mut top::Context,
+        ctx: &mut top::Guard,
         m: &Message,
         _fmt: &IrcFormatter,
         _sock: &IrcStream
     ) {
         match m.verb {
-            "JOIN" => ctx.edit(|world| {
+            "JOIN" => {
                 let chname = m.args[0].to_string();
 
-                let chan = match world.channel_name_owner(&chname).cloned() {
+                let chan = match ctx.world.channel_name_owner(&chname).cloned() {
                     Some(chan) => chan,
                     None => {
-                        let chan = world.create_channel();
-                        world.channel_claim(chan.clone(), chname.clone());
+                        let chan = ctx.world.create_channel();
+                        ctx.world.channel_claim(chan.clone(), chname.clone());
                         chan
                     }
                 };
 
-                world.channel_user_add(chan, self.identity.clone());
-            }),
+                ctx.world.channel_user_add(chan, self.identity.clone());
+            },
 
             _ => { }
         }

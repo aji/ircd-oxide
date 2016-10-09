@@ -44,7 +44,7 @@ impl Listener {
 }
 
 impl Pollable for Listener {
-    fn ready(&mut self, _: &mut top::Context, act: &mut LooperActions) -> io::Result<()> {
+    fn ready(&mut self, _: &mut top::Guard, act: &mut LooperActions) -> io::Result<()> {
         let sock = {
             let sock = try!(self.sock.accept());
             // TODO: don't expect, maybe?

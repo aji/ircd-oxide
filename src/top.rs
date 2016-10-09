@@ -8,6 +8,7 @@
 
 use irc::global::IRCD;
 use looper::LooperActions;
+use state::checkpoint::Change;
 use state::world::World;
 use state::world::WorldGuard;
 
@@ -19,7 +20,10 @@ pub struct Context {
 
 pub type Message = ();
 
-pub type Guard = Context;
+pub struct Guard<'a> {
+    pub ircd: &'a IRCD,
+    pub world: WorldGuard<'a>,
+}
 
 impl Context {
     /// Creates a new `Top`
@@ -33,17 +37,22 @@ impl Context {
         }
     }
 
-    pub fn edit<'w, 't: 'w, F, T>(&'t mut self, f: F) -> T
-    where F: Fn(&mut WorldGuard<'w>) -> T {
-        let mut guard = self.world.editor();
-        let result = f(&mut guard);
-        let changes = guard.finish();
-        info!("there were {} changes", changes.len());
-        result
-    }
-
     pub fn on_event<F>(&mut self, act: &mut LooperActions, cb: F)
     where F: FnOnce(&mut Guard, &mut LooperActions) {
-        cb(self, act);
+        let mut guard = Guard {
+            ircd: &self.ircd,
+            world: self.world.editor(),
+        };
+
+        cb(&mut guard, act);
+
+        let changes = guard.finish();
+        info!("there were {} changes", changes.len());
+    }
+}
+
+impl<'a> Guard<'a> {
+    fn finish(self) -> Vec<Change> {
+        self.world.finish()
     }
 }

@@ -19,6 +19,7 @@ use irc::output::IrcFormatter;
 use looper::LooperActions;
 use looper::LooperLoop;
 use looper::Pollable;
+use state::checkpoint::Change;
 use state::id::Id;
 use state::identity::Identity;
 use state::world::WorldView;
@@ -231,4 +232,12 @@ impl Promotion {
             })
         }
     }
+}
+
+pub fn handle_changes(
+    _ctx: &top::Context,
+    _act: &mut LooperActions,
+    _changes: Vec<Change>
+) {
+    // TODO
 }

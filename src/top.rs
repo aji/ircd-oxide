@@ -6,6 +6,7 @@
 
 //! The runtime
 
+use irc::client;
 use irc::global::IRCD;
 use looper::LooperActions;
 use state::checkpoint::Change;
@@ -39,15 +40,20 @@ impl Context {
 
     pub fn on_event<F>(&mut self, act: &mut LooperActions, cb: F)
     where F: FnOnce(&mut Guard, &mut LooperActions) {
-        let mut guard = Guard {
-            ircd: &self.ircd,
-            world: self.world.editor(),
+        let changes = {
+            let mut guard = Guard {
+                ircd: &self.ircd,
+                world: self.world.editor(),
+            };
+
+            cb(&mut guard, act);
+
+            let changes = guard.finish();
+            info!("there were {} changes", changes.len());
+            changes
         };
 
-        cb(&mut guard, act);
-
-        let changes = guard.finish();
-        info!("there were {} changes", changes.len());
+        client::handle_changes(&*self, act, changes)
     }
 }
 

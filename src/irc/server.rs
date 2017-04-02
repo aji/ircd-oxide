@@ -16,12 +16,15 @@ use tokio_core::net::TcpStream;
 use irc::codec::IrcCodec;
 use irc::client::Client;
 
+use irc::pluto::Pluto;
+
 pub fn listen(handle: Handle, addr: &SocketAddr) -> io::Result<()> {
     let listener = try!(TcpListener::bind(addr, &handle));
 
+    let pluto = Pluto::new();
     let inner_handle = handle.clone();
     let conn_handler = listener.incoming().for_each(move |(conn, _)| {
-        bind_client(inner_handle.clone(), conn)
+        bind_client(pluto.clone(), inner_handle.clone(), conn)
     }).map_err(|e| {
         println!("error: listener shutting down: {}", e);
     });
@@ -31,15 +34,16 @@ pub fn listen(handle: Handle, addr: &SocketAddr) -> io::Result<()> {
     Ok(())
 }
 
-pub fn bind_client(handle: Handle, conn: TcpStream) -> io::Result<()> {
+pub fn bind_client(pluto: Pluto, handle: Handle, conn: TcpStream) -> io::Result<()> {
     let (sink, stream) = conn.framed(IrcCodec).split();
     let (sender, receiver) = mpsc::unbounded();
 
-    let client = Client::new(sender);
+    let client = Client::new(sender.clone());
 
-    let msg_handler = stream.fold(client, |client, msg| {
+    let inner_pluto = pluto.clone();
+    let msg_handler = stream.fold(client, move |client, msg| {
         println!("-> {:?}", msg);
-        client.handle(msg)
+        client.handle(inner_pluto.clone(), msg)
     }).map_err(|e| {
         println!("error: client shutting down: {}", e);
     }).map(|ok| {
@@ -52,8 +56,15 @@ pub fn bind_client(handle: Handle, conn: TcpStream) -> io::Result<()> {
         println!("output stream ended");
     });
 
+    let pluto_handler = pluto.observer().fold(sender, |sender, val| {
+        sender.send(format!("value is now {}", val)).map_err(|e| ())
+    }).map(|ok| {
+        println!("pluto stream ended");
+    });
+
     handle.spawn(msg_handler);
     handle.spawn(out_handler);
+    handle.spawn(pluto_handler);
 
     Ok(())
 }

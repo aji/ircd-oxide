@@ -14,6 +14,7 @@ pub mod client;
 pub mod codec;
 pub mod global;
 pub mod message;
+pub mod pluto;
 pub mod server;
 
 use std::cmp;

@@ -10,11 +10,14 @@ use std::io;
 
 use futures;
 use futures::Future;
+use futures::IntoFuture;
 use futures::Poll;
 use futures::Async;
 use futures::sync::mpsc::UnboundedSender;
 
 use irc::message::Message;
+use irc::pluto::Pluto;
+use irc::pluto::PlutoTx;
 
 pub struct Client {
     out: UnboundedSender<String>,
@@ -27,10 +30,20 @@ impl Client {
         Client { out: out }
     }
 
-    pub fn handle(self, m: Message) -> ClientOp {
-        println!("--> {:?}", m);
-        self.out.send("neato".to_string());
-        ClientOp::ok(self)
+    pub fn handle(self, pluto: Pluto, m: Message) -> Box<Future<Item=Client, Error=ClientError>> {
+        let tx = pluto.tx(move |p| {
+            if m.verb == "INC" {
+                let next = p.get() + 1;
+                p.set(next);
+            } else {
+                self.out.send(format!("no idea what you meant"));
+            }
+            self
+        }).map_err(|e| {
+            ClientError
+        });
+
+        Box::new(tx)
     }
 }
 
@@ -40,6 +53,7 @@ impl From<ClientError> for io::Error {
     }
 }
 
+/*
 pub enum ClientOp {
     Nil(Option<Result<Client, ClientError>>)
 }
@@ -61,3 +75,4 @@ impl Future for ClientOp {
         }
     }
 }
+*/

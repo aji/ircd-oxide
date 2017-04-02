@@ -18,6 +18,8 @@ use futures::sync::mpsc::UnboundedSender;
 use irc::message::Message;
 use irc::pluto::Pluto;
 use irc::pluto::PlutoTx;
+use irc::pluto::PlutoReader;
+use irc::pluto::PlutoWriter;
 
 pub struct Client {
     out: UnboundedSender<String>,
@@ -30,20 +32,27 @@ impl Client {
         Client { out: out }
     }
 
-    pub fn handle(self, pluto: Pluto, m: Message) -> Box<Future<Item=Client, Error=ClientError>> {
-        let tx = pluto.tx(move |p| {
-            if m.verb == "INC" {
-                let next = p.get() + 1;
-                p.set(next);
-            } else {
-                self.out.send(format!("no idea what you meant"));
-            }
-            self
-        }).map_err(|e| {
-            ClientError
-        });
+    pub fn handle(self, pluto: Pluto, m: Message) -> ClientOp {
+        match &m.verb[..] {
+            b"INC" => {
+                let tx = pluto.tx(move |p| {
+                    let next = p.get() + 1;
+                    p.set(next);
+                    self
+                }).map_err(|_| ClientError);
+                ClientOp::boxed(tx)
+            },
 
-        Box::new(tx)
+            b"GET" => {
+                self.out.send(format!("value is: {}", pluto.get()));
+                ClientOp::ok(self)
+            },
+
+            _ => {
+                self.out.send(format!("no idea what you meant"));
+                ClientOp::ok(self)
+            }
+        }
     }
 }
 
@@ -53,15 +62,24 @@ impl From<ClientError> for io::Error {
     }
 }
 
-/*
 pub enum ClientOp {
-    Nil(Option<Result<Client, ClientError>>)
+    Nil(Option<Result<Client, ClientError>>),
+    Boxed(Box<Future<Item=Client, Error=ClientError>>)
 }
 
 impl ClientOp {
-    fn ok(c: Client) -> ClientOp { ClientOp::Nil(Some(Ok(c))) }
+    pub fn ok(c: Client) -> ClientOp {
+        ClientOp::Nil(Some(Ok(c)))
+    }
 
-    fn err(e: ClientError) -> ClientOp { ClientOp::Nil(Some(Err(e))) }
+    pub fn err(e: ClientError) -> ClientOp {
+        ClientOp::Nil(Some(Err(e)))
+    }
+
+    pub fn boxed<F>(f: F) -> ClientOp
+    where F: 'static + Future<Item=Client, Error=ClientError> {
+        ClientOp::Boxed(Box::new(f))
+    }
 }
 
 impl Future for ClientOp {
@@ -71,8 +89,10 @@ impl Future for ClientOp {
     fn poll(&mut self) -> Poll<Client, ClientError> {
         match *self {
             ClientOp::Nil(ref mut inner) =>
-                inner.take().expect("cannot poll ClientOp twice").map(Async::Ready)
+                inner.take().expect("cannot poll ClientOp twice").map(Async::Ready),
+
+            ClientOp::Boxed(ref mut inner) =>
+                inner.poll(),
         }
     }
 }
-*/

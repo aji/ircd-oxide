@@ -35,6 +35,24 @@ impl PlutoCore {
     }
 }
 
+trait PlutoRefHolder {
+    fn pluto_ref(&self) -> &PlutoRef;
+}
+
+pub trait PlutoReader {
+    fn get(&self) -> u32;
+}
+
+pub trait PlutoWriter {
+    fn set(&mut self, x: u32) -> ();
+}
+
+impl<T> PlutoReader for T where T: PlutoRefHolder {
+    fn get(&self) -> u32 {
+        self.pluto_ref().borrow().val
+    }
+}
+
 pub struct PlutoTxContext {
     p: PlutoRef,
     val_changed: bool
@@ -50,12 +68,14 @@ impl PlutoTxContext {
             self.p.borrow_mut().send_update();
         }
     }
+}
 
-    pub fn get(&self) -> u32 {
-        self.p.borrow().val
-    }
+impl PlutoRefHolder for PlutoTxContext {
+    fn pluto_ref(&self) -> &PlutoRef { &self.p }
+}
 
-    pub fn set(&mut self, x: u32) {
+impl PlutoWriter for PlutoTxContext {
+    fn set(&mut self, x: u32) {
         self.p.borrow_mut().val = x;
         self.val_changed = true;
     }
@@ -84,15 +104,13 @@ impl Pluto {
     }
 }
 
+impl PlutoRefHolder for Pluto {
+    fn pluto_ref(&self) -> &PlutoRef { &self.p }
+}
+
 pub struct PlutoTx<F> {
     p: PlutoRef,
     body: Option<F>,
-}
-
-impl<F> PlutoTx<F> {
-    fn take_body(&mut self) -> F {
-        self.body.take().expect("cannot poll PlutoTx more than once")
-    }
 }
 
 impl<F, T> Future for PlutoTx<F> where F: FnOnce(&mut PlutoTxContext) -> T {
@@ -100,7 +118,7 @@ impl<F, T> Future for PlutoTx<F> where F: FnOnce(&mut PlutoTxContext) -> T {
     type Error = ();
 
     fn poll(&mut self) -> futures::Poll<T, ()> {
-        let body = self.take_body();
+        let body = self.body.take().expect("cannot poll PlutoTx more than once");
         let mut ctx = PlutoTxContext::open(self.p.clone());
         let result = body(&mut ctx);
         ctx.finalize();

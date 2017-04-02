@@ -9,15 +9,15 @@
 //! ircd-oxide is structured as a large library whose main entry points are
 //! assembled into a small `main` implementation in a separate binary.
 
-#![feature(fnbox)] // YUCK!!!
-
 //#![warn(missing_docs)]
 #![allow(unused_imports)]
 
-extern crate mio;
+extern crate bytes;
+extern crate futures;
 extern crate rand;
-extern crate take_mut;
 extern crate time;
+extern crate tokio_core;
+extern crate tokio_io;
 
 #[macro_use]
 extern crate bitflags;
@@ -29,8 +29,5 @@ mod macros;
 
 pub mod common;
 pub mod irc;
-pub mod looper;
-pub mod oxen;
 pub mod state;
 pub mod top;
-pub mod xenc;

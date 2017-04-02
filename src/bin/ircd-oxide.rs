@@ -1,6 +1,7 @@
+extern crate futures;
 extern crate ircd;
+extern crate tokio_core;
 extern crate log;
-extern crate mio;
 
 mod logger {
     use log;
@@ -34,14 +35,8 @@ mod logger {
 fn main() {
     logger::init().expect("failed to initialize logger");
 
-    ircd::looper::run(
-        ircd::top::Context::new(),
-        |looper, ev| looper.add(ev, |_, ev, tk| {
-            let listener = ircd::irc::listen::Listener::new(("0.0.0.0", 5050), ev, tk);
-            match listener {
-                Ok(l) => Ok(Box::new(l)),
-                Err(e) => Err(e),
-            }
-        })
-    ).expect("loop exited with an error");
+    let mut core = tokio_core::reactor::Core::new().expect("failed to initialize Tokio");
+    let addr = "127.0.0.1:6667".parse().unwrap();
+    ircd::irc::server::listen(core.handle(), &addr).expect("failed to create listener");
+    core.run(futures::future::empty::<(), ()>()).expect("Tokio exited");
 }

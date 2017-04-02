@@ -11,7 +11,6 @@
 //! access to, and so we pass them around.
 
 use common::Sid;
-use irc::output::IrcFormatter;
 use state;
 
 /// The top level IRC server type
@@ -34,7 +33,4 @@ impl IRCD {
 
     /// The `Sid` for this IRCD instance
     pub fn sid(&self) -> &Sid { &self.sid }
-
-    /// Creates an `IrcFormatter` using this `IRCD`'s configuration
-    pub fn formatter(&self) -> IrcFormatter { IrcFormatter::new(self.name()) }
 }

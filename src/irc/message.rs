@@ -8,95 +8,85 @@
 
 use std::fmt;
 
+use bytes::Bytes;
+use bytes::BytesMut;
+
 pub type ParseResult<T> = Result<T, &'static str>;
 
 /// Helper for the message parser
-struct Scanner<'a> {
-    s: &'a [u8],
-    i: usize,
+struct Scanner {
+    b: Bytes,
 }
 
 /// The parsed form of an IRC message.
 #[derive(PartialEq)]
-pub struct Message<'a> {
+pub struct Message {
     /// The verb portion of a message, specifying which action to take.
-    pub verb:  &'a str,
+    pub verb: Bytes,
     /// The arguments to the verb.
-    pub args:  Vec<&'a str>,
+    pub args: Vec<Bytes>,
 }
 
-impl<'a> Scanner<'a> {
-    fn new(s: &[u8]) -> Scanner {
-        Scanner {
-            s: s,
-            i: 0,
-        }
+impl Scanner {
+    fn new(b: Bytes) -> Scanner {
+        Scanner { b: b }
     }
 
     fn peek(&self) -> u8 {
-        if self.i < self.s.len() {
-            self.s[self.i]
-        } else {
-            0
-        }
+        self.b.first().cloned().unwrap_or(0)
     }
 
     fn empty(&self) -> bool {
-        self.i >= self.s.len()
+        self.b.is_empty()
     }
 
     fn skip(&mut self) {
-        self.i += 1;
+        self.b.split_to(1);
     }
 
     fn skip_spaces(&mut self) {
-        while !self.empty() && (self.s[self.i] as char).is_whitespace() {
-            self.i += 1;
-        }
+        let end = self.b.iter()
+            .position(|c| !(*c as char).is_whitespace())
+            .unwrap_or(self.b.len());
+
+        self.b.split_to(end);
     }
 
-    fn chomp(&mut self) -> ParseResult<&'a str> {
-        self.skip_spaces();
-        let start = self.i;
-        while !self.empty() && !(self.s[self.i] as char).is_whitespace() {
-            self.i += 1;
-        }
-        let end = self.i;
+    fn chomp(&mut self) -> Bytes {
         self.skip_spaces();
 
-        match ::std::str::from_utf8(&self.s[start..end]) {
-            Ok(s) => Ok(s),
-            Err(_) => Err("slice is not valid UTF-8"),
-        }
+        let end = self.b.iter()
+            .position(|c| (*c as char).is_whitespace())
+            .unwrap_or(self.b.len());
+
+        let buf = self.b.split_to(end);
+        self.skip_spaces();
+        buf
     }
 
-    fn chomp_remaining(&mut self) -> ParseResult<&'a str> {
-        let i = self.i;
-        self.i = self.s.len();
-
-        match ::std::str::from_utf8(&self.s[i..]) {
-            Ok(s) => Ok(s),
-            Err(_) => Err("slice is not valid UTF-8"),
-        }
+    fn chomp_remaining(&mut self) -> Bytes {
+        let end = self.b.len();
+        self.b.split_to(end)
     }
 }
 
-impl<'a> Message<'a> {
+impl Message {
     /// Parses the byte slice into a `Message`
-    pub fn parse(spec: &'a [u8]) -> ParseResult<Message<'a>> {
-        let mut scan = Scanner::new(spec);
+    pub fn parse<T>(spec: T) -> ParseResult<Message>
+    where Bytes: From<T> {
+        let mut scan = Scanner::new(From::from(spec));
 
         scan.skip_spaces();
 
-        let verb = try!(scan.chomp());
+        let verb = scan.chomp();
 
         let mut args = Vec::new();
         while !scan.empty() {
             args.push(if scan.peek() == b':' {
                 scan.skip();
-                try!(scan.chomp_remaining())
+                scan.chomp_remaining()
             } else {
-                try!(scan.chomp())
+                scan.chomp()
             });
         }
 
@@ -107,58 +97,88 @@ impl<'a> Message<'a> {
     }
 }
 
-impl<'a> fmt::Debug for Message<'a> {
+fn write_bytes(f: &mut fmt::Formatter, s: &Bytes) -> fmt::Result {
+    match ::std::str::from_utf8(&s[..]) {
+        Ok(t) => write!(f, "{:?}", t),
+        Err(_) => write!(f, "{:?}", s)
+    }
+}
+
+impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "Message({:?}", self.verb));
+        try!(write!(f, "Message("));
+        try!(write_bytes(f, &self.verb));
+
         for s in self.args.iter() {
-            try!(write!(f, ", {:?}", s));
+            try!(write!(f, ", "));
+            try!(write_bytes(f, s));
         }
+
         try!(write!(f, ")"));
         Ok(())
     }
 }
 
+#[cfg(test)]
+fn test_good_parse(
+    line: &str,
+    verb: &str,
+    args: Vec<&str>
+) {
+    let expected = Message {
+        verb: Bytes::from(verb),
+        args: args.into_iter().map(|v| Bytes::from(v)).collect()
+    };
+
+    let actual = Message::parse(&line[..]).unwrap();
+
+    assert_eq!(expected, actual);
+}
+
 #[test]
 fn message_parse_easy() {
-    assert_eq!(Message {
-        verb: "PING",
-        args: vec!["123"],
-    }, Message::parse(b"PING 123").unwrap());
+    test_good_parse(
+        "PING 123",
+        "PING", vec!["123"]
+    );
 }
 
 #[test]
 fn message_parse_trailing() {
-    assert_eq!(Message {
-        verb: "PING",
-        args: vec!["this has spaces"],
-    }, Message::parse(b"PING :this has spaces").unwrap());
+    test_good_parse(
+        "PING :this has spaces",
+        "PING", vec!["this has spaces"],
+    );
+}
+
+#[test]
+fn message_parse_trailing_extra_space() {
+    test_good_parse(
+        "PING this :   has spaces",
+        "PING", vec!["this", "   has spaces"],
+    );
 }
 
 #[test]
 fn message_parse_with_spaces() {
-    assert_eq!(Message {
-        verb: "PING",
-        args: vec!["this", "has", "spaces"],
-    }, Message::parse(b"PING this has spaces").unwrap());
+    test_good_parse(
+        "PING this has spaces",
+        "PING", vec!["this", "has", "spaces"],
+    );
 }
 
 #[test]
 fn message_parse_dumb_client() {
-    assert_eq!(Message {
-        verb: "PING",
-        args: vec!["this", "has", "spaces  "],
-    }, Message::parse(b"   PING       this  has :spaces  ").unwrap());
+    test_good_parse(
+        "   PING       this  has :spaces  ",
+        "PING", vec!["this", "has", "spaces  "],
+    );
 }
 
 #[test]
 fn message_parse_client_still_dumb() {
-    assert_eq!(Message {
-        verb: "PING",
-        args: vec!["this", "has", "spaces"],
-    }, Message::parse(b"   PING this has spaces          ").unwrap());
-}
-
-#[test]
-fn message_parse_invalid_utf8() {
-    assert!(Message::parse(b"\xff\xff\xff\xff").is_err());
+    test_good_parse(
+        "   PING this has spaces          ",
+        "PING", vec!["this", "has", "spaces"],
+    );
 }

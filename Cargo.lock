@@ -1,5 +1,5 @@
 [root]
-name = "ircd"
+name = "oxide"
 version = "0.0.1"
 dependencies = [
  "bitflags 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",

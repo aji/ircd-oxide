@@ -1,5 +1,5 @@
 [package]
-name = "ircd"
+name = "oxide"
 version = "0.0.1"
 authors = ["Alex Iadicicco <alex@ajitek.net>"]
 

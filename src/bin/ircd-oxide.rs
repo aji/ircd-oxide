@@ -1,5 +1,5 @@
 extern crate futures;
-extern crate ircd;
+extern crate oxide;
 extern crate tokio_core;
 extern crate log;
 
@@ -37,6 +37,6 @@ fn main() {
 
     let mut core = tokio_core::reactor::Core::new().expect("failed to initialize Tokio");
     let addr = "127.0.0.1:6667".parse().unwrap();
-    ircd::irc::server::listen(core.handle(), &addr).expect("failed to create listener");
+    oxide::irc::server::listen(core.handle(), &addr).expect("failed to create listener");
     core.run(futures::future::empty::<(), ()>()).expect("Tokio exited");
 }

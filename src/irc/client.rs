@@ -44,12 +44,12 @@ impl Client {
             },
 
             b"GET" => {
-                self.out.send(format!("value is: {}", pluto.get()));
+                self.out.send(format!("value is: {}", pluto.get())).unwrap();
                 ClientOp::ok(self)
             },
 
             _ => {
-                self.out.send(format!("no idea what you meant"));
+                self.out.send(format!("no idea what you meant")).unwrap();
                 ClientOp::ok(self)
             }
         }
@@ -57,7 +57,7 @@ impl Client {
 }
 
 impl From<ClientError> for io::Error {
-    fn from(e: ClientError) -> io::Error {
+    fn from(_: ClientError) -> io::Error {
         io::Error::new(io::ErrorKind::Other, "client error")
     }
 }

@@ -30,4 +30,3 @@ mod macros;
 pub mod common;
 pub mod irc;
 pub mod state;
-pub mod top;

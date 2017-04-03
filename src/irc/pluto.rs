@@ -30,13 +30,9 @@ impl PlutoCore {
 
     fn send_update(&mut self) {
         for obs in self.observers.iter_mut() {
-            obs.send(self.val);
+            obs.send(self.val).unwrap();
         }
     }
-}
-
-trait PlutoRefHolder {
-    fn pluto_ref(&self) -> &PlutoRef;
 }
 
 pub trait PlutoReader {
@@ -45,12 +41,6 @@ pub trait PlutoReader {
 
 pub trait PlutoWriter {
     fn set(&mut self, x: u32) -> ();
-}
-
-impl<T> PlutoReader for T where T: PlutoRefHolder {
-    fn get(&self) -> u32 {
-        self.pluto_ref().borrow().val
-    }
 }
 
 pub struct PlutoTxContext {
@@ -70,8 +60,10 @@ impl PlutoTxContext {
     }
 }
 
-impl PlutoRefHolder for PlutoTxContext {
-    fn pluto_ref(&self) -> &PlutoRef { &self.p }
+impl PlutoReader for PlutoTxContext {
+    fn get(&self) -> u32 {
+        self.p.borrow().val
+    }
 }
 
 impl PlutoWriter for PlutoTxContext {
@@ -104,8 +96,10 @@ impl Pluto {
     }
 }
 
-impl PlutoRefHolder for Pluto {
-    fn pluto_ref(&self) -> &PlutoRef { &self.p }
+impl PlutoReader for Pluto {
+    fn get(&self) -> u32 {
+        self.p.borrow().val
+    }
 }
 
 pub struct PlutoTx<F> {

@@ -46,19 +46,19 @@ pub fn bind_client(pluto: Pluto, handle: Handle, conn: TcpStream) -> io::Result<
         client.handle(inner_pluto.clone(), msg)
     }).map_err(|e| {
         println!("error: client shutting down: {}", e);
-    }).map(|ok| {
+    }).map(|_| {
         println!("input stream ended");
     });
 
     let out_handler = receiver.fold(sink, |sink, msg| {
-        sink.send(msg).map_err(|e| ())
-    }).map(|ok| {
+        sink.send(msg).map_err(|_| ())
+    }).map(|_| {
         println!("output stream ended");
     });
 
     let pluto_handler = pluto.observer().fold(sender, |sender, val| {
-        sender.send(format!("value is now {}", val)).map_err(|e| ())
-    }).map(|ok| {
+        sender.send(format!("value is now {}", val)).map_err(|_| ())
+    }).map(|_| {
         println!("pluto stream ended");
     });
 

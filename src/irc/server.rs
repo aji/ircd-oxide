@@ -6,7 +6,7 @@ use futures::Future;
 use futures::Sink;
 use futures::Stream;
 use futures::stream;
-use futures::sync::mpsc;
+use futures::unsync::mpsc;
 
 use tokio_io::AsyncRead;
 use tokio_core::reactor::Handle;

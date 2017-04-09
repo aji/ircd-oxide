@@ -8,6 +8,7 @@
 
 pub mod bimap;
 pub mod sid;
+pub mod observe;
 pub mod table;
 
 pub use self::sid::Sid;

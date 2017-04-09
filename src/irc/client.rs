@@ -11,6 +11,7 @@ use std::io;
 use std::mem;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::time::Duration;
 
 use bytes::Buf;
 use bytes::BufMut;
@@ -24,9 +25,9 @@ use futures::Poll;
 use futures::Async;
 use futures::task;
 use futures::Stream;
-use futures::unsync::mpsc::UnboundedSender;
 
 use tokio_core::reactor::Handle;
+use tokio_core::reactor::Timeout;
 use tokio_io::AsyncRead;
 use tokio_io::AsyncWrite;
 use tokio_io::codec::FramedRead;
@@ -45,6 +46,20 @@ pub struct ClientPool {
 
 impl ClientPool {
     pub fn new(handle: Handle, pluto: Pluto) -> ClientPool {
+        let inner_handle = handle.clone();
+
+        let observer = pluto.observer().and_then(move |ev| {
+            info!("pluto update, val = {}, waiting 2 secs...", ev);
+            Timeout::new(Duration::new(2, 0), &inner_handle).unwrap()
+                .map(move |_| ev)
+                .map_err(|_| ())
+        }).for_each(|ev| {
+            info!("update committed: {}", ev);
+            Ok(())
+        }).map_err(|_| ());
+
+        handle.spawn(observer);
+
         ClientPool {
             handle: handle,
             pluto: pluto,
@@ -148,7 +163,7 @@ impl Active {
 impl State for Active {
     type Next = ();
 
-    fn handle(mut self, _pluto: Pluto, m: Message) -> ClientOp<Self> {
+    fn handle(mut self, pluto: Pluto, m: Message) -> ClientOp<Self> {
         match &m.verb[..] {
             b"REGISTER" => {
                 self.out.send(&b"you're already registered\r\n"[..]);
@@ -156,6 +171,16 @@ impl State for Active {
 
             b"SPECIAL" => {
                 self.out.send(&b"very special!\r\n"[..]);
+                let op = pluto.tx(move |p| {
+                    let next = p.get() + 1;
+                    self.out.send(format!("incrementing to {}\r\n", next).as_bytes());
+                    p.set(next);
+                    self
+                }).map(|mut client| {
+                    client.out.send(&b"all done!\r\n"[..]);
+                    client
+                }).map_err(|_| ClientError);
+                return ClientOp::boxed(op);
             },
 
             b"CLOSE" => {

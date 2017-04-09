@@ -14,7 +14,6 @@ use tokio_core::net::TcpListener;
 use tokio_core::net::TcpStream;
 
 use irc::codec::IrcCodec;
-use irc::client::Client;
 use irc::client::ClientPool;
 
 use irc::pluto::Pluto;

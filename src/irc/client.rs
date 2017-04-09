@@ -23,12 +23,13 @@ use futures::IntoFuture;
 use futures::Poll;
 use futures::Async;
 use futures::task;
+use futures::Stream;
 use futures::unsync::mpsc::UnboundedSender;
 
 use tokio_core::reactor::Handle;
 use tokio_io::AsyncRead;
 use tokio_io::AsyncWrite;
-use tokio_io::codec::Decoder;
+use tokio_io::codec::FramedRead;
 
 use irc::codec::IrcCodec;
 use irc::message::Message;
@@ -54,17 +55,24 @@ impl ClientPool {
         where R: 'static + AsyncRead,
               W: 'static + AsyncWrite
     {
+        let recv_binding = FramedRead::new(recv, IrcCodec);
         let send_binding = WriteBinding::new(send);
-        let client = Client::new(send_binding.writer());
-        let recv_binding = ReadBinding::new(recv, self.pluto.clone(), client);
+
+        let client = Pending::new(send_binding.writer());
 
         let mut soft_closer = send_binding.writer();
         let mut hard_closer = send_binding.writer();
 
-        self.handle.spawn(recv_binding.map(move |_| {
+        let driver = client.driver(self.pluto.clone(), recv_binding);
+
+        let inner_pluto = self.pluto.clone();
+        self.handle.spawn(driver.and_then(move |(active, recv)| {
+            active.driver(inner_pluto, recv)
+        }).and_then(move |(_, _)| {
             info!("receiver finished; closing writer (soft)");
             soft_closer.send(&b"Goodbye...\r\n"[..]);
             soft_closer.close_soft();
+            Ok(())
         }).map_err(move |_| {
             info!("receiver errored; closing writer (hard)");
             hard_closer.close_hard();
@@ -78,147 +86,199 @@ impl ClientPool {
     }
 }
 
-pub struct Client {
-    out: WriteHandle,
-}
-
 pub struct ClientError;
 
-impl Client {
-    fn new(out: WriteHandle) -> Client {
-        Client { out: out }
+impl From<io::Error> for ClientError {
+    fn from(_: io::Error) -> ClientError {
+        ClientError
     }
+}
 
-    fn handle(mut self, pluto: Pluto, m: Message) -> ClientOp {
+struct Pending {
+    out: WriteHandle,
+    counter: usize
+}
 
+impl Pending {
+    fn new(out: WriteHandle) -> Pending {
+        Pending { out: out, counter: 0 }
+    }
+}
+
+impl State for Pending {
+    type Next = Active;
+
+    fn handle(mut self, _pluto: Pluto, m: Message) -> ClientOp<Self> {
         match &m.verb[..] {
-            b"INC" => {
-                let tx = pluto.tx(move |p| {
-                    let next = p.get() + 1;
-                    p.set(next);
-                    self
-                }).map_err(|_| ClientError);
-                ClientOp::boxed(tx)
+            b"REGISTER" => {
+                self.out.send(&b"registering you...\r\n"[..]);
+                self.counter += 1;
             },
 
-            b"GET" => {
-                self.out.send(format!("value is: {}\n\n", pluto.get()).as_bytes());
-                ClientOp::ok(self)
+            b"SPECIAL" => {
+                self.out.send(&b"you are not special yet\r\n"[..]);
             },
 
-            _ => {
-                //self.out.send(format!("no idea what you meant")).unwrap();
-                self.out.send(format!("no idea what you meant\r\n").as_bytes());
-                ClientOp::ok(self)
-            }
+            _ => { }
+        }
+
+        ClientOp::ok(self)
+    }
+
+    fn transition(self) -> Result<Active, Pending> {
+        if self.counter > 2 {
+            Ok(Active::from_pending(self))
+        } else {
+            Err(self)
         }
     }
 }
 
-impl Drop for Client {
-    fn drop(&mut self) {
-        info!("(Client) I am forgotten...");
+struct Active {
+    out: WriteHandle,
+    wants_close: bool
+}
+
+impl Active {
+    fn from_pending(pending: Pending) -> Active {
+        Active { out: pending.out, wants_close: false }
     }
 }
 
-struct ReadBinding<R> {
-    recv: R,
-    recv_buf: BytesMut,
-    pluto: Pluto,
-    state: ReadState,
+impl State for Active {
+    type Next = ();
+
+    fn handle(mut self, _pluto: Pluto, m: Message) -> ClientOp<Self> {
+        match &m.verb[..] {
+            b"REGISTER" => {
+                self.out.send(&b"you're already registered\r\n"[..]);
+            },
+
+            b"SPECIAL" => {
+                self.out.send(&b"very special!\r\n"[..]);
+            },
+
+            b"CLOSE" => {
+                self.wants_close = true;
+            },
+
+            _ => { }
+        }
+
+        ClientOp::ok(self)
+    }
+
+    fn handle_eof(mut self, _pluto: Pluto) -> ClientOp<Self> {
+        self.wants_close = true;
+        ClientOp::ok(self)
+    }
+
+    fn transition(mut self) -> Result<(), Active> {
+        if self.wants_close {
+            self.out.send(&b"closing you...\r\n"[..]);
+            Ok(())
+        } else {
+            Err(self)
+        }
+    }
 }
 
-enum ReadState {
-    Empty,
-    Ready(Client),
-    Lines(Client),
-    Op(ClientOp),
-}
+trait State: Sized {
+    type Next;
 
-impl<R> ReadBinding<R> {
-    fn new(recv: R, pluto: Pluto, client: Client) -> ReadBinding<R> {
-        ReadBinding {
-            recv: recv,
-            recv_buf: BytesMut::with_capacity(1024), // TODO: revisit 1024
+    fn handle(self, pluto: Pluto, m: Message) -> ClientOp<Self>;
+
+    fn transition(self) -> Result<Self::Next, Self>;
+
+    fn handle_eof(self, _pluto: Pluto) -> ClientOp<Self> {
+        ClientOp::err(ClientError)
+    }
+
+    fn driver<R>(self, pluto: Pluto, recv: R) -> Driver<Self, R> {
+        Driver {
             pluto: pluto,
-            state: ReadState::Ready(client),
+            seen_eof: false,
+            state: DriverState::Ready(self, recv),
         }
     }
 }
 
-impl<R: AsyncRead> Future for ReadBinding<R> {
-    type Item = ();
+struct Driver<S: State, R> {
+    pluto: Pluto,
+    seen_eof: bool,
+    state: DriverState<S, R>,
+}
+
+enum DriverState<S: State, R> {
+    Empty,
+    Ready(S, R),
+    Processing(ClientOp<S>, R),
+}
+
+impl<S: State, R: Stream<Item=Message>> Future for Driver<S, R>
+    where S: State,
+          R: Stream<Item=Message>,
+          ClientError: From<R::Error>,
+{
+    type Item = (S::Next, R);
     type Error = ClientError;
 
-    fn poll(&mut self) -> Poll<(), ClientError> {
-        info!("poll read binding");
+    fn poll(&mut self) -> Poll<(S::Next, R), ClientError> {
         loop {
-            match mem::replace(&mut self.state, ReadState::Empty) {
-                ReadState::Empty => panic!("cannot poll ReadBinding while empty"),
+            match mem::replace(&mut self.state, DriverState::Empty) {
+                DriverState::Empty => {
+                    error!("internal client driver error");
+                    return Err(ClientError);
+                },
 
-                ReadState::Ready(client) => {
-                    self.recv_buf.reserve(1);
-                    match self.recv.read_buf(&mut self.recv_buf) {
-                        Ok(Async::Ready(0)) => {
-                            info!("EOF read");
-                            return Ok(Async::Ready(()))
+                DriverState::Ready(state, mut recv) => {
+                    if self.seen_eof {
+                        error!("client state appears to be waiting for more input after EOF");
+                        return Err(ClientError);
+                    }
+
+                    match recv.poll() {
+                        Ok(Async::Ready(Some(m))) => {
+                            let op = state.handle(self.pluto.clone(), m);
+                            self.state = DriverState::Processing(op, recv);
                         },
-                        Ok(Async::Ready(n)) => {
-                            info!("ready -> lines (read {} bytes)", n);
-                            self.state = ReadState::Lines(client);
+
+                        Ok(Async::Ready(None)) => {
+                            let op = state.handle_eof(self.pluto.clone());
+                            self.seen_eof = true;
+                            self.state = DriverState::Processing(op, recv);
                         },
+
                         Ok(Async::NotReady) => {
-                            info!("ready -> ready (not ready)");
-                            self.state = ReadState::Ready(client);
+                            self.state = DriverState::Ready(state, recv);
                             return Ok(Async::NotReady);
                         },
+
                         Err(e) => {
-                            info!("client error: {:?}", e);
-                            return Err(ClientError);
+                            return Err(From::from(e));
                         },
                     }
                 },
 
-                ReadState::Lines(client) => {
-                    match IrcCodec::decode(&mut IrcCodec, &mut self.recv_buf) {
-                        Ok(Some(m)) => {
-                            info!(" --> {:?}", m);
-                            let op = client.handle(self.pluto.clone(), m);
-                            info!("lines -> op");
-                            self.state = ReadState::Op(op);
+                DriverState::Processing(mut op, recv) => {
+                    match op.poll() {
+                        Ok(Async::Ready(state)) => match state.transition() {
+                            Ok(next) => return Ok(Async::Ready((next, recv))),
+                            Err(state) => self.state = DriverState::Ready(state, recv),
                         },
-                        Ok(None) => {
-                            info!("lines -> ready");
-                            self.state = ReadState::Ready(client);
-                        },
-                        Err(e) => {
-                            info!("client error: {:?}", e);
-                            return Err(ClientError);
-                        },
-                    }
-                },
 
-                ReadState::Op(mut op) => {
-                    match try!(op.poll()) {
-                        Async::Ready(client) => {
-                            info!("op -> lines");
-                            self.state = ReadState::Lines(client);
-                        },
-                        Async::NotReady => {
-                            info!("op -> op (not ready)");
-                            self.state = ReadState::Op(op);
+                        Ok(Async::NotReady) => {
+                            self.state = DriverState::Processing(op, recv);
                             return Ok(Async::NotReady);
+                        },
+
+                        Err(e) => {
+                            return Err(e);
                         },
                     }
                 },
             }
         }
-    }
-}
-
-impl<R> Drop for ReadBinding<R> {
-    fn drop(&mut self) {
-        info!("(ReadBinding) I am forgotten...");
     }
 }
 
@@ -275,7 +335,7 @@ impl WriteHandle {
             // TODO: awake the thread even on discarded writes?
             data.blocked_send.take().map(|t| t.unpark());
         } else {
-            warn!("self() on completed WriteBinding");
+            warn!("send() on completed WriteBinding");
         }
     }
 
@@ -411,31 +471,31 @@ impl From<ClientError> for io::Error {
     }
 }
 
-pub enum ClientOp {
-    Nil(Option<Result<Client, ClientError>>),
-    Boxed(Box<Future<Item=Client, Error=ClientError>>)
+pub enum ClientOp<T> {
+    Nil(Option<Result<T, ClientError>>),
+    Boxed(Box<Future<Item=T, Error=ClientError>>)
 }
 
-impl ClientOp {
-    pub fn ok(c: Client) -> ClientOp {
-        ClientOp::Nil(Some(Ok(c)))
+impl<T> ClientOp<T> {
+    pub fn ok(data: T) -> ClientOp<T> {
+        ClientOp::Nil(Some(Ok(data)))
     }
 
-    pub fn err(e: ClientError) -> ClientOp {
+    pub fn err(e: ClientError) -> ClientOp<T> {
         ClientOp::Nil(Some(Err(e)))
     }
 
-    pub fn boxed<F>(f: F) -> ClientOp
-    where F: 'static + Future<Item=Client, Error=ClientError> {
+    pub fn boxed<F>(f: F) -> ClientOp<T>
+    where F: 'static + Future<Item=T, Error=ClientError> {
         ClientOp::Boxed(Box::new(f))
     }
 }
 
-impl Future for ClientOp {
-    type Item = Client;
+impl<T> Future for ClientOp<T> {
+    type Item = T;
     type Error = ClientError;
 
-    fn poll(&mut self) -> Poll<Client, ClientError> {
+    fn poll(&mut self) -> Poll<T, ClientError> {
         match *self {
             ClientOp::Nil(ref mut inner) =>
                 inner.take().expect("cannot poll ClientOp::Nil twice").map(Async::Ready),

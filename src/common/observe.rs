@@ -41,7 +41,7 @@ pub struct Observation<T> {
     data: Rc<T>,
 }
 
-impl<T> Observable<T> {
+impl<T: fmt::Debug> Observable<T> {
     pub fn new() -> Observable<T> {
         Observable { dispatch: Vec::new() }
     }
@@ -77,6 +77,8 @@ impl<T> Observable<T> {
     fn dispatch(&mut self, obs: Observation<T>) {
         // if this becomes a bottleneck, it can be made better by iterating over
         // indices and using swap_remove to delete dropped weak pointers
+
+        debug!("dispatching observation: {:?}", obs);
 
         let processed = self.dispatch
             .drain(..)
@@ -148,10 +150,7 @@ impl<T> fmt::Display for Observation<T> where T: fmt::Display {
 
 impl<T> fmt::Debug for Observation<T> where T: fmt::Debug {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "Observation("));
-        try!(fmt::Debug::fmt(&*self.data, f));
-        try!(write!(f, ")"));
-        Ok(())
+        write!(f, "Observation({:?})", &*self.data)
     }
 }
 

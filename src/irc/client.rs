@@ -49,8 +49,8 @@ impl ClientPool {
         let inner_handle = handle.clone();
 
         let observer = pluto.observer().and_then(move |ev| {
-            info!("pluto update, val = {}, waiting 2 secs...", ev);
-            Timeout::new(Duration::new(2, 0), &inner_handle).unwrap()
+            info!("pluto update, val = {}, waiting 1ms...", ev);
+            Timeout::new(Duration::from_millis(1), &inner_handle).unwrap()
                 .map(move |_| ev)
                 .map_err(|_| ())
         }).for_each(|ev| {
@@ -124,6 +124,8 @@ impl State for Pending {
     type Next = Active;
 
     fn handle(mut self, _pluto: Pluto, m: Message) -> ClientOp<Self> {
+        info!(" -> {:?}", m);
+
         match &m.verb[..] {
             b"REGISTER" => {
                 self.out.send(&b"registering you...\r\n"[..]);
@@ -164,6 +166,8 @@ impl State for Active {
     type Next = ();
 
     fn handle(mut self, pluto: Pluto, m: Message) -> ClientOp<Self> {
+        info!(" -> {:?}", m);
+
         match &m.verb[..] {
             b"REGISTER" => {
                 self.out.send(&b"you're already registered\r\n"[..]);
@@ -249,7 +253,7 @@ impl<S: State, R: Stream<Item=Message>> Future for Driver<S, R>
     type Error = ClientError;
 
     fn poll(&mut self) -> Poll<(S::Next, R), ClientError> {
-        loop {
+        for _ in 0..5 {
             match mem::replace(&mut self.state, DriverState::Empty) {
                 DriverState::Empty => {
                     error!("internal client driver error");
@@ -304,6 +308,10 @@ impl<S: State, R: Stream<Item=Message>> Future for Driver<S, R>
                 },
             }
         }
+
+        // "yield" to allow other tasks to make progress
+        task::park().unpark();
+        Ok(Async::NotReady)
     }
 }
 
@@ -414,7 +422,7 @@ impl<W: AsyncWrite> Future for WriteBinding<W> {
     fn poll(&mut self) -> Poll<(), ClientError> {
         info!("poll write binding");
 
-        loop {
+        for _ in 0..5 {
             let mut data = self.data.borrow_mut();
 
             if data.status == WriteStatus::StopImmediately {
@@ -461,6 +469,7 @@ impl<W: AsyncWrite> Future for WriteBinding<W> {
                         },
                         Ok(Async::NotReady) => {
                             info!("drain not ready");
+                            self.state = WriteState::Draining(buf);
                             return Ok(Async::NotReady);
                         },
                         Err(_) => {
@@ -481,6 +490,10 @@ impl<W: AsyncWrite> Future for WriteBinding<W> {
 
             drop(data);
         }
+
+        // "yield" to allow other tasks to make progress
+        task::park().unpark();
+        Ok(Async::NotReady)
     }
 }
 

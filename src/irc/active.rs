@@ -11,20 +11,21 @@ use irc::send::SendHandle;
 use irc::pending::Pending;
 
 pub struct Active {
+    pluto: Pluto,
     out: SendHandle,
     wants_close: bool
 }
 
 impl Active {
-    pub fn new(out: SendHandle) -> Active {
-        Active { out: out, wants_close: false }
+    pub fn new(pluto: Pluto, out: SendHandle) -> Active {
+        Active { pluto: pluto, out: out, wants_close: false }
     }
 }
 
 impl State for Active {
     type Next = ();
 
-    fn handle(mut self, pluto: Pluto, m: Message) -> ClientOp<Self> {
+    fn handle(mut self, m: Message) -> ClientOp<Self> {
         info!(" -> {:?}", m);
 
         match &m.verb[..] {
@@ -34,7 +35,8 @@ impl State for Active {
 
             b"SPECIAL" => {
                 self.out.send(&b"very special!\r\n"[..]);
-                let op = pluto.tx(move |p| {
+                // TODO: figure out how to get rid of the clone on this next line:
+                let op = self.pluto.clone().tx(move |p| {
                     let next = p.get() + 1;
                     self.out.send(format!("incrementing to {}\r\n", next).as_bytes());
                     p.set(next);
@@ -56,7 +58,7 @@ impl State for Active {
         ClientOp::ok(self)
     }
 
-    fn handle_eof(mut self, _pluto: Pluto) -> ClientOp<Self> {
+    fn handle_eof(mut self) -> ClientOp<Self> {
         self.wants_close = true;
         ClientOp::ok(self)
     }

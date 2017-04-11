@@ -6,20 +6,21 @@ use irc::pluto::Pluto;
 use irc::send::SendHandle;
 
 pub struct Pending {
+    pluto: Pluto,
     out: SendHandle,
     counter: usize
 }
 
 impl Pending {
-    pub fn new(out: SendHandle) -> Pending {
-        Pending { out: out, counter: 0 }
+    pub fn new(pluto: Pluto, out: SendHandle) -> Pending {
+        Pending { pluto: pluto, out: out, counter: 0 }
     }
 }
 
 impl State for Pending {
     type Next = Active;
 
-    fn handle(mut self, _pluto: Pluto, m: Message) -> ClientOp<Self> {
+    fn handle(mut self, m: Message) -> ClientOp<Self> {
         info!(" -> {:?}", m);
 
         match &m.verb[..] {
@@ -40,7 +41,7 @@ impl State for Pending {
 
     fn transition(self) -> Result<Active, Pending> {
         if self.counter > 2 {
-            Ok(Active::new(self.out))
+            Ok(Active::new(self.pluto, self.out))
         } else {
             Err(self)
         }

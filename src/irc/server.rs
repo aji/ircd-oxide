@@ -73,16 +73,15 @@ impl ClientPool {
         let send_binding = SendBinding::new(send);
 
         let id = out.insert(send_binding.handle());
-        let client = Pending::new(send_binding.handle());
+        let client = Pending::new(self.pluto.clone(), send_binding.handle());
 
         let mut soft_closer = send_binding.handle();
         let mut hard_closer = send_binding.handle();
 
-        let driver = Driver::new(client, self.pluto.clone(), recv_binding);
+        let driver = Driver::new(client, recv_binding);
 
-        let inner_pluto = self.pluto.clone();
         self.handle.spawn(driver.and_then(move |(active, recv)| {
-            Driver::new(active, inner_pluto, recv)
+            Driver::new(active, recv)
         }).and_then(move |(_, _)| {
             info!("receiver finished; closing writer (soft)");
             soft_closer.send(&b"Goodbye...\r\n"[..]);

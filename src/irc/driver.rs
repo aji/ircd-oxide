@@ -8,22 +8,20 @@ use futures::Stream;
 
 use irc::ClientError;
 use irc::message::Message;
-use irc::pluto::Pluto;
 
 pub trait State: Sized {
     type Next;
 
-    fn handle(self, pluto: Pluto, m: Message) -> ClientOp<Self>;
+    fn handle(self, m: Message) -> ClientOp<Self>;
 
     fn transition(self) -> Result<Self::Next, Self>;
 
-    fn handle_eof(self, _pluto: Pluto) -> ClientOp<Self> {
+    fn handle_eof(self) -> ClientOp<Self> {
         ClientOp::err(ClientError::Other("unexpected EOF"))
     }
 
-    fn driver<R>(self, pluto: Pluto, recv: R) -> Driver<Self, R> {
+    fn driver<R>(self, recv: R) -> Driver<Self, R> {
         Driver {
-            pluto: pluto,
             seen_eof: false,
             state: DriverState::Ready(self, recv),
         }
@@ -31,7 +29,6 @@ pub trait State: Sized {
 }
 
 pub struct Driver<S: State, R> {
-    pluto: Pluto,
     seen_eof: bool,
     state: DriverState<S, R>,
 }
@@ -43,9 +40,8 @@ enum DriverState<S: State, R> {
 }
 
 impl<S: State, R> Driver<S, R> {
-    pub fn new(state: S, pluto: Pluto, recv: R) -> Driver<S, R> {
+    pub fn new(state: S, recv: R) -> Driver<S, R> {
         Driver {
-            pluto: pluto,
             seen_eof: false,
             state: DriverState::Ready(state, recv)
         }
@@ -76,12 +72,12 @@ impl<S: State, R: Stream<Item=Message>> Future for Driver<S, R>
 
                     match recv.poll() {
                         Ok(Async::Ready(Some(m))) => {
-                            let op = state.handle(self.pluto.clone(), m);
+                            let op = state.handle(m);
                             self.state = DriverState::Processing(op, recv);
                         },
 
                         Ok(Async::Ready(None)) => {
-                            let op = state.handle_eof(self.pluto.clone());
+                            let op = state.handle_eof();
                             self.seen_eof = true;
                             self.state = DriverState::Processing(op, recv);
                         },

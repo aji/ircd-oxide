@@ -6,13 +6,9 @@
 
 //! Logic for handling specifics of the IRC client protocol
 
-#[macro_use]
-pub mod numeric;
-
 pub mod cap;
 pub mod client;
 pub mod codec;
-pub mod global;
 pub mod message;
 pub mod pluto;
 pub mod server;

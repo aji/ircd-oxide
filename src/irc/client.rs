@@ -7,6 +7,7 @@
 //! Client handling
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io;
 use std::mem;
 use std::rc::Rc;
@@ -42,27 +43,26 @@ use irc::pluto::PlutoWriter;
 pub struct ClientPool {
     handle: Handle,
     pluto: Pluto,
+    out: SendPool,
 }
 
 impl ClientPool {
     pub fn new(handle: Handle, pluto: Pluto) -> ClientPool {
-        let inner_handle = handle.clone();
+        let out = SendPool::new();
+        let inner_out = out.clone();
 
-        let observer = pluto.observer().and_then(move |ev| {
+        let observer = pluto.observer().for_each(move |ev| {
             info!("pluto update, val = {}, waiting 1ms...", ev);
-            Timeout::new(Duration::from_millis(1), &inner_handle).unwrap()
-                .map(move |_| ev)
-                .map_err(|_| ())
-        }).for_each(|ev| {
-            info!("update committed: {}", ev);
+            inner_out.send_all(format!("ATTN: value is now {}\r\n", ev));
             Ok(())
-        }).map_err(|_| ());
+        });
 
         handle.spawn(observer);
 
         ClientPool {
             handle: handle,
             pluto: pluto,
+            out: out,
         }
     }
 
@@ -70,9 +70,12 @@ impl ClientPool {
         where R: 'static + AsyncRead,
               W: 'static + AsyncWrite
     {
+        let out = self.out.clone();
+
         let recv_binding = FramedRead::new(recv, IrcCodec);
         let send_binding = WriteBinding::new(send);
 
+        let id = out.insert(send_binding.writer());
         let client = Pending::new(send_binding.writer());
 
         let mut soft_closer = send_binding.writer();
@@ -93,11 +96,67 @@ impl ClientPool {
             hard_closer.close_hard();
         }));
 
-        self.handle.spawn(send_binding.map(|_| {
+        self.handle.spawn(send_binding.then(move |result| {
+            out.remove(id);
+            result
+        }).map(|_| {
             info!("sender finished; nothing to do");
         }).map_err(|_| {
             info!("sender errored; nothing to do");
         }));
+    }
+}
+
+#[derive(Clone)]
+struct SendPool {
+    inner: Rc<RefCell<SendPoolInner>>,
+}
+
+struct SendPoolInner {
+    next_id: u64,
+    pool: HashMap<u64, WriteHandle>,
+}
+
+impl SendPool {
+    fn new() -> SendPool {
+        let inner = SendPoolInner {
+            next_id: 1,
+            pool: HashMap::new(),
+        };
+
+        SendPool { inner: Rc::new(RefCell::new(inner)) }
+    }
+
+    fn insert(&self, out: WriteHandle) -> u64 {
+        self.inner.borrow_mut().insert(out)
+    }
+
+    fn remove(&self, id: u64) {
+        self.inner.borrow_mut().remove(id);
+    }
+
+    fn send_all<T: IntoBuf>(&self, data: T) {
+        self.inner.borrow_mut().send_all(data);
+    }
+}
+
+impl SendPoolInner {
+    fn insert(&mut self, out: WriteHandle) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.pool.insert(id, out);
+        id
+    }
+
+    fn remove(&mut self, id: u64) {
+        self.pool.remove(&id);
+    }
+
+    fn send_all<T: IntoBuf>(&mut self, into_buf: T) {
+        let bytes: Vec<u8> = into_buf.into_buf().collect();
+        for out in self.pool.values_mut() {
+            out.send(&bytes);
+        }
     }
 }
 
@@ -253,7 +312,7 @@ impl<S: State, R: Stream<Item=Message>> Future for Driver<S, R>
     type Error = ClientError;
 
     fn poll(&mut self) -> Poll<(S::Next, R), ClientError> {
-        for _ in 0..5 {
+        for _ in 0..50 {
             match mem::replace(&mut self.state, DriverState::Empty) {
                 DriverState::Empty => {
                     error!("internal client driver error");
@@ -422,7 +481,7 @@ impl<W: AsyncWrite> Future for WriteBinding<W> {
     fn poll(&mut self) -> Poll<(), ClientError> {
         info!("poll write binding");
 
-        for _ in 0..5 {
+        for _ in 0..50 {
             let mut data = self.data.borrow_mut();
 
             if data.status == WriteStatus::StopImmediately {

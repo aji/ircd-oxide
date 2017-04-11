@@ -9,7 +9,6 @@
 use std::fmt;
 
 use bytes::Bytes;
-use bytes::BytesMut;
 
 pub type ParseResult<T> = Result<T, &'static str>;
 

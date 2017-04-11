@@ -5,7 +5,6 @@ use std::rc::Rc;
 use futures::Poll;
 use futures::Async;
 use futures::Future;
-use futures::sync::mpsc;
 
 use common::observe::Observable;
 use common::observe::Observer;

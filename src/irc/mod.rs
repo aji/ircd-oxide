@@ -6,15 +6,53 @@
 
 //! Logic for handling specifics of the IRC client protocol
 
+pub mod active;
 pub mod cap;
-pub mod client;
 pub mod codec;
+pub mod driver;
 pub mod message;
+pub mod pending;
 pub mod pluto;
+pub mod send;
 pub mod server;
 
 use std::cmp;
 use std::convert::From;
+use std::io;
+
+/// An error on a client connection. These generally cause the client to be closed
+#[derive(Debug)]
+pub enum ClientError {
+    IO(io::Error),
+    Other(&'static str),
+}
+
+impl From<io::Error> for ClientError {
+    fn from(err: io::Error) -> ClientError {
+        ClientError::IO(err)
+    }
+}
+
+impl From<&'static str> for ClientError {
+    fn from(err: &'static str) -> ClientError {
+        ClientError::Other(err)
+    }
+}
+
+impl From<()> for ClientError {
+    fn from(_: ()) -> ClientError {
+        ClientError::Other("(unknown error)")
+    }
+}
+
+impl From<ClientError> for io::Error {
+    fn from(err: ClientError) -> io::Error {
+        match err {
+            ClientError::IO(e) => e,
+            ClientError::Other(msg) => io::Error::new(io::ErrorKind::Other, msg),
+        }
+    }
+}
 
 /// An `IrcString` is a wrapper around a standard Rust `String` that provides
 /// extra functionality for comparison and canonicalization based on the

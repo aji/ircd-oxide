@@ -9,115 +9,61 @@
 pub mod active;
 pub mod cap;
 pub mod codec;
-pub mod driver;
 pub mod message;
+pub mod op;
 pub mod pending;
 pub mod pluto;
-pub mod send;
-pub mod server;
 
 use std::cmp;
 use std::convert::From;
+use std::fmt;
 use std::io;
+
+pub use self::message::Message;
+pub use self::op::Op;
+pub use self::pending::Listener;
 
 /// An error on a client connection. These generally cause the client to be closed
 #[derive(Debug)]
-pub enum ClientError {
+pub enum Error {
     IO(io::Error),
     Other(&'static str),
 }
 
-impl From<io::Error> for ClientError {
-    fn from(err: io::Error) -> ClientError {
-        ClientError::IO(err)
+impl From<io::Error> for Error {
+    fn from(err: io::Error) -> Error {
+        Error::IO(err)
     }
 }
 
-impl From<&'static str> for ClientError {
-    fn from(err: &'static str) -> ClientError {
-        ClientError::Other(err)
+impl From<&'static str> for Error {
+    fn from(err: &'static str) -> Error {
+        Error::Other(err)
     }
 }
 
-impl From<()> for ClientError {
-    fn from(_: ()) -> ClientError {
-        ClientError::Other("(unknown error)")
+impl From<()> for Error {
+    fn from(_: ()) -> Error {
+        Error::Other("(unknown error)")
     }
 }
 
-impl From<ClientError> for io::Error {
-    fn from(err: ClientError) -> io::Error {
+impl From<Error> for io::Error {
+    fn from(err: Error) -> io::Error {
         match err {
-            ClientError::IO(e) => e,
-            ClientError::Other(msg) => io::Error::new(io::ErrorKind::Other, msg),
+            Error::IO(e) => e,
+            Error::Other(msg) => io::Error::new(io::ErrorKind::Other, msg),
         }
     }
 }
 
-/// An `IrcString` is a wrapper around a standard Rust `String` that provides
-/// extra functionality for comparison and canonicalization based on the
-/// particular casemapping (ASCII, RFC 1459, etc.) in use.
-pub struct IrcString(String);
-
-impl IrcString {
-    /// Returns the canonical form of this `IrcString`. Canonical forms have the
-    /// same comparison relationship as `IrcString`s (so if the canonical forms
-    /// are equal, then the `IrcString`s they were derived from will be equal),
-    /// but aren't otherwise too useful.
-    pub fn canonicalize(&self) -> String {
-        self.0.to_lowercase()
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::IO(ref e) => write!(f, "(io) {}", e),
+            Error::Other(ref s) => write!(f, "(?) {}", s),
+        }
     }
 }
 
-impl From<String> for IrcString {
-    fn from(s: String) -> IrcString { IrcString(s) }
-}
-
-impl From<IrcString> for String {
-    fn from(s: IrcString) -> String { s.0 }
-}
-
-impl cmp::PartialEq for IrcString {
-    fn eq(&self, other: &IrcString) -> bool {
-        self.canonicalize().eq(&other.canonicalize())
-    }
-
-    fn ne(&self, other: &IrcString) -> bool {
-        self.canonicalize().ne(&other.canonicalize())
-    }
-}
-
-impl cmp::Eq for IrcString { }
-
-impl cmp::PartialOrd for IrcString {
-    fn partial_cmp(&self, other: &IrcString) -> Option<cmp::Ordering> {
-        self.canonicalize().partial_cmp(&other.canonicalize())
-    }
-}
-
-impl cmp::Ord for IrcString {
-    fn cmp(&self, other: &IrcString) -> cmp::Ordering {
-        self.canonicalize().cmp(&other.canonicalize())
-    }
-}
-
-#[cfg(test)]
-fn irc_string(s: &str) -> IrcString {
-    From::from(s.to_owned())
-}
-
-#[test]
-fn test_irc_string_eq_ne() {
-    assert!(irc_string("hello") == irc_string("Hello"));
-    assert!(irc_string("HELLO") == irc_string("HeLlO"));
-
-    assert!(irc_string("hello") != irc_string("goodbye"));
-}
-
-#[test]
-fn test_irc_string_cmp() {
-    assert!(irc_string("foo") > irc_string("bar"));
-    assert!(irc_string("FOO") > irc_string("bar"));
-    assert!(irc_string("foo") > irc_string("BAR"));
-    assert!(irc_string("FOO") > irc_string("BAR"));
-}
+pub type Result<T> = ::std::result::Result<T, Error>;

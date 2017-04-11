@@ -13,7 +13,6 @@
 #![allow(unused_imports)]
 
 extern crate bytes;
-extern crate futures;
 extern crate rand;
 extern crate time;
 extern crate tokio_core;
@@ -21,6 +20,8 @@ extern crate tokio_io;
 
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate futures;
 #[macro_use]
 extern crate log;
 

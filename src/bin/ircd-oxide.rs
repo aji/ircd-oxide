@@ -3,6 +3,8 @@ extern crate oxide;
 extern crate tokio_core;
 extern crate log;
 
+use futures::Stream;
+
 mod logger {
     use log;
 
@@ -36,7 +38,10 @@ fn main() {
     logger::init().expect("failed to initialize logger");
 
     let mut core = tokio_core::reactor::Core::new().expect("failed to initialize Tokio");
+    let handle = core.handle();
     let addr = "127.0.0.1:6667".parse().unwrap();
-    oxide::irc::server::listen(core.handle(), &addr).expect("failed to create listener");
-    core.run(futures::future::empty::<(), ()>()).expect("Tokio exited");
+    let port = tokio_core::net::TcpListener::bind(&addr, &handle).expect("failed to create listener");
+    let pluto = oxide::irc::pluto::Pluto::new();
+    let listener = oxide::irc::Listener::new(&handle, pluto, port.incoming().map(|x| x.0));
+    core.run(listener).expect("event loop exited");
 }

@@ -1,74 +1,103 @@
+use futures::Async;
 use futures::Future;
+use futures::Poll;
+use futures::Stream;
 
-use irc::ClientError;
-use irc::message::Message;
+use tokio_core::reactor::Handle;
+
+use irc;
 use irc::pluto::Pluto;
-use irc::pluto::PlutoReader;
-use irc::pluto::PlutoWriter;
-use irc::driver::State;
-use irc::driver::ClientOp;
-use irc::send::SendHandle;
-use irc::pending::Pending;
 
 pub struct Active {
-    pluto: Pluto,
-    out: SendHandle,
-    wants_close: bool
+    pluto: Pluto
 }
 
 impl Active {
-    pub fn new(pluto: Pluto, out: SendHandle) -> Active {
-        Active { pluto: pluto, out: out, wants_close: false }
+    pub fn new(pluto: Pluto) -> Active {
+        Active { pluto: pluto }
+    }
+
+    pub fn bind<S: 'static>(self, handle: &Handle, sock: S)
+        where S: Stream<Item=irc::Message>,
+              irc::Error: From<S::Error>
+    {
+        handle.spawn(Driver::new(self, sock));
+    }
+
+    fn handle(self, m: irc::Message) -> irc::Op<Active> {
+        info!(" -> {:?}", m);
+        irc::Op::ok(self)
     }
 }
 
-impl State for Active {
-    type Next = ();
+struct Driver<S> {
+    state: Option<DriverState>,
+    sock: S,
+}
 
-    fn handle(mut self, m: Message) -> ClientOp<Self> {
-        info!(" -> {:?}", m);
+enum DriverState {
+    Ready(Active),
+    Processing(irc::Op<Active>),
+}
 
-        match &m.verb[..] {
-            b"REGISTER" => {
-                self.out.send(&b"you're already registered\r\n"[..]);
-            },
-
-            b"SPECIAL" => {
-                self.out.send(&b"very special!\r\n"[..]);
-                // TODO: figure out how to get rid of the clone on this next line:
-                let op = self.pluto.clone().tx(move |p| {
-                    let next = p.get() + 1;
-                    self.out.send(format!("incrementing to {}\r\n", next).as_bytes());
-                    p.set(next);
-                    self
-                }).map(|mut client| {
-                    client.out.send(&b"all done!\r\n"[..]);
-                    client
-                }).map_err(|_| ClientError::Other("ouch"));
-                return ClientOp::boxed(op);
-            },
-
-            b"CLOSE" => {
-                self.wants_close = true;
-            },
-
-            _ => { }
+impl<S> Driver<S> {
+    fn new(active: Active, sock: S) -> Driver<S> {
+        Driver {
+            state: Some(DriverState::Ready(active)),
+            sock: sock,
         }
-
-        ClientOp::ok(self)
     }
+}
 
-    fn handle_eof(mut self) -> ClientOp<Self> {
-        self.wants_close = true;
-        ClientOp::ok(self)
-    }
+impl<S: 'static> Driver<S>
+    where S: Stream<Item=irc::Message>,
+          irc::Error: From<S::Error>
+{
+    fn poll_error(&mut self) -> Poll<(), irc::Error> {
+        loop {
+            let state = match self.state.take() {
+                Some(state) => state,
+                None => return Err(irc::Error::Other("state.take() was None")),
+            };
 
-    fn transition(mut self) -> Result<(), Active> {
-        if self.wants_close {
-            self.out.send(&b"closing you...\r\n"[..]);
-            Ok(())
-        } else {
-            Err(self)
+            match state {
+                DriverState::Ready(active) => {
+                    match try!(self.sock.poll()) {
+                        Async::Ready(Some(message)) => {
+                            let op = active.handle(message);
+                            self.state = Some(DriverState::Processing(op));
+                        },
+                        Async::Ready(None) => {
+                            return Err(irc::Error::Other("unexpected EOF"));
+                        },
+                        Async::NotReady => {
+                            self.state = Some(DriverState::Ready(active));
+                            return Ok(Async::NotReady);
+                        },
+                    }
+                },
+
+                DriverState::Processing(mut op) => {
+                    if let Async::Ready(active) = try!(op.poll()) {
+                        self.state = Some(DriverState::Ready(active));
+                    } else {
+                        self.state = Some(DriverState::Processing(op));
+                        return Ok(Async::NotReady);
+                    }
+                },
+            }
         }
+    }
+}
+
+impl<S: 'static> Future for Driver<S>
+    where S: Stream<Item=irc::Message>,
+          irc::Error: From<S::Error>
+{
+    type Item = ();
+    type Error = ();
+
+    fn poll(&mut self) -> Poll<(), ()> {
+        self.poll_error().map_err(|e| info!("active died: {}", e))
     }
 }

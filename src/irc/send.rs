@@ -16,9 +16,10 @@ use futures::Poll;
 use futures::Async;
 use futures::task;
 
+use tokio_core::reactor::Handle;
 use tokio_io::AsyncWrite;
 
-use irc::ClientError;
+use irc;
 
 #[derive(Clone)]
 pub struct SendPool {
@@ -27,7 +28,7 @@ pub struct SendPool {
 
 struct SendPoolInner {
     next_id: u64,
-    pool: HashMap<u64, SendHandle>,
+    pool: HashMap<u64, Sender>,
 }
 
 impl SendPool {
@@ -40,7 +41,7 @@ impl SendPool {
         SendPool { inner: Rc::new(RefCell::new(inner)) }
     }
 
-    pub fn insert(&self, out: SendHandle) -> u64 {
+    pub fn insert(&self, out: Sender) -> u64 {
         self.inner.borrow_mut().insert(out)
     }
 
@@ -48,13 +49,13 @@ impl SendPool {
         self.inner.borrow_mut().remove(id);
     }
 
-    pub fn send_all<T: IntoBuf>(&self, data: T) {
-        self.inner.borrow_mut().send_all(data);
+    pub fn send_all(&self, buf: &[u8]) {
+        self.inner.borrow_mut().send_all(buf);
     }
 }
 
 impl SendPoolInner {
-    fn insert(&mut self, out: SendHandle) -> u64 {
+    fn insert(&mut self, out: Sender) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         self.pool.insert(id, out);
@@ -65,10 +66,9 @@ impl SendPoolInner {
         self.pool.remove(&id);
     }
 
-    fn send_all<T: IntoBuf>(&mut self, into_buf: T) {
-        let bytes: Vec<u8> = into_buf.into_buf().collect();
+    fn send_all(&mut self, buf: &[u8]) {
         for out in self.pool.values_mut() {
-            out.send(&bytes);
+            out.send(buf);
         }
     }
 }
@@ -93,40 +93,33 @@ impl Drop for SendInner {
 }
 
 #[derive(Clone)]
-pub struct SendHandle {
+pub struct Sender {
     inner: Weak<RefCell<SendInner>>,
 }
 
-pub struct SendBinding<W> {
-    send: W,
-    state: SendState,
-    inner: Rc<RefCell<SendInner>>,
-}
+impl Sender {
+    pub fn bind<W: 'static>(handle: &Handle, send: W) -> Sender where W: AsyncWrite {
+        let driver = Driver::new(send);
+        let inner = Rc::downgrade(&driver.inner);
+        handle.spawn(driver);
+        Sender { inner: inner }
+    }
 
-enum SendState {
-    Empty,
-    Parking,
-    Parked,
-    Draining(io::Cursor<BytesMut>),
-}
-
-impl SendHandle {
-    pub fn send<T: IntoBuf>(&mut self, into_buf: T) {
+    pub fn send(&mut self, buf: &[u8]) {
         if let Some(r) = self.inner.upgrade() {
             let mut inner = r.borrow_mut();
 
-            let buf = into_buf.into_buf();
             if inner.status == SendStatus::Writable {
-                inner.next_buf.reserve(buf.remaining());
+                inner.next_buf.reserve(buf.len());
                 inner.next_buf.put(buf);
             } else {
-                warn!("silently discarding write of {} bytes", buf.remaining());
+                warn!("silently discarding write of {} bytes", buf.len());
             }
 
             // TODO: awake the thread even on discarded writes?
             inner.blocked_send.take().map(|t| t.unpark());
         } else {
-            warn!("send() on completed SendBinding");
+            warn!("send() on completed Sender");
         }
     }
 
@@ -138,7 +131,7 @@ impl SendHandle {
             }
             inner.blocked_send.take().map(|t| t.unpark());
         } else {
-            warn!("close_soft() on completed SendBinding");
+            warn!("close_soft() on completed Sender");
         }
     }
 
@@ -148,38 +141,44 @@ impl SendHandle {
             inner.status = SendStatus::StopImmediately;
             inner.blocked_send.take().map(|t| t.unpark());
         } else {
-            warn!("close_hard() on completed SendBinding");
+            warn!("close_hard() on completed Sender");
         }
     }
 }
 
-impl<W> SendBinding<W> {
-    pub fn new(send: W) -> SendBinding<W> {
+struct Driver<W> {
+    send: W,
+    state: DriverState,
+    inner: Rc<RefCell<SendInner>>,
+}
+
+enum DriverState {
+    Empty,
+    Parking(BytesMut),
+    Parked(BytesMut),
+    Draining(io::Cursor<BytesMut>),
+}
+
+impl<W: AsyncWrite> Driver<W> {
+    fn new(send: W) -> Driver<W> {
+        // TODO: revisit 64
+        let buf1 = BytesMut::with_capacity(64);
+        let buf2 = BytesMut::with_capacity(64);
+
         let inner = SendInner {
-            next_buf: BytesMut::with_capacity(64), // TODO: revisit 64
+            next_buf: buf1,
             status: SendStatus::Writable,
             blocked_send: None,
         };
 
-        SendBinding {
+        Driver {
             send: send,
-            state: SendState::Parked,
+            state: DriverState::Parked(buf2),
             inner: Rc::new(RefCell::new(inner)),
         }
     }
 
-    pub fn handle(&self) -> SendHandle {
-        SendHandle { inner: Rc::downgrade(&self.inner) }
-    }
-}
-
-impl<W: AsyncWrite> Future for SendBinding<W> {
-    type Item = ();
-    type Error = ClientError;
-
-    fn poll(&mut self) -> Poll<(), ClientError> {
-        info!("poll write binding");
-
+    fn poll_error(&mut self) -> Poll<(), irc::Error> {
         for _ in 0..50 {
             let mut inner = self.inner.borrow_mut();
 
@@ -187,61 +186,47 @@ impl<W: AsyncWrite> Future for SendBinding<W> {
                 return Ok(Async::Ready(()));
             }
 
-            match mem::replace(&mut self.state, SendState::Empty) {
-                SendState::Empty => panic!("cannot poll SendBinding while empty"),
+            match mem::replace(&mut self.state, DriverState::Empty) {
+                DriverState::Empty => {
+                    return Err(irc::Error::Other("send driver internal error"));
+                },
 
-                SendState::Parking => {
+                DriverState::Parking(buf) => {
                     if inner.status == SendStatus::Draining {
-                        info!("drained! stopping writer");
                         return Ok(Async::Ready(()));
                     } else {
                         inner.blocked_send = Some(task::park());
-                        info!("parking -> parked");
-                        self.state = SendState::Parked;
+                        self.state = DriverState::Parked(buf);
                         return Ok(Async::NotReady);
                     }
                 },
 
-                SendState::Parked => {
+                DriverState::Parked(mut buf) => {
                     if inner.next_buf.len() > 0 {
-                        let mut next = BytesMut::with_capacity(64); // TODO: revisit 64
-                        mem::swap(&mut next, &mut inner.next_buf);
-                        info!("parked -> drain ({} bytes)", next.len());
-                        self.state = SendState::Draining(io::Cursor::new(next));
+                        buf.clear();
+                        mem::swap(&mut buf, &mut inner.next_buf);
+                        self.state = DriverState::Draining(io::Cursor::new(buf));
                     } else {
-                        info!("parked -> parking");
-                        self.state = SendState::Parking;
+                        self.state = DriverState::Parking(buf);
                     }
                 },
 
-                SendState::Draining(mut buf) => {
+                DriverState::Draining(mut buf) => {
                     // TODO: check buf has bytes to send
 
-                    match self.send.write_buf(&mut buf) {
-                        Ok(Async::Ready(0)) => {
-                            info!("EOF write");
+                    if let Async::Ready(n) = try!(self.send.write_buf(&mut buf)) {
+                        if n == 0 {
                             return Ok(Async::Ready(()));
-                        },
-                        Ok(Async::Ready(n)) => {
-                            info!("drained {} bytes", n);
-                        },
-                        Ok(Async::NotReady) => {
-                            info!("drain not ready");
-                            self.state = SendState::Draining(buf);
-                            return Ok(Async::NotReady);
-                        },
-                        Err(_) => {
-                            info!("drain error");
-                            return Err(ClientError::Other("drain error"));
-                        },
+                        }
+                    } else {
+                        self.state = DriverState::Draining(buf);
+                        return Ok(Async::NotReady);
                     }
 
                     if buf.has_remaining() {
-                        info!("drain -> drain");
-                        self.state = SendState::Draining(buf);
+                        self.state = DriverState::Draining(buf);
                     } else {
-                        info!("drain -> parking");
-                        self.state = SendState::Parking;
+                        self.state = DriverState::Parking(buf.into_inner());
                     }
                 },
             }
@@ -249,14 +234,25 @@ impl<W: AsyncWrite> Future for SendBinding<W> {
             drop(inner);
         }
 
+        warn!("a driver appears to be spinning");
+
         // "yield" to allow other tasks to make progress
         task::park().unpark();
         Ok(Async::NotReady)
     }
 }
 
-impl<W> Drop for SendBinding<W> {
+impl<W: AsyncWrite> Future for Driver<W> {
+    type Item = ();
+    type Error = ();
+
+    fn poll(&mut self) -> Poll<(), ()> {
+        self.poll_error().map_err(|e| warn!("driver errored: {}", e))
+    }
+}
+
+impl<W> Drop for Driver<W> {
     fn drop(&mut self) {
-        info!("(SendBinding) I am forgotten...");
+        debug!("driver finished");
     }
 }

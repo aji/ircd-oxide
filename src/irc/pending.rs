@@ -7,21 +7,25 @@ use futures::task;
 use tokio_core::net::TcpStream;
 use tokio_core::reactor::Handle;
 use tokio_io::codec::FramedRead;
+use tokio_io::AsyncRead;
 
 use irc;
-use irc::pluto::Pluto;
 use irc::active::Active;
 use irc::codec::IrcCodec;
+use irc::pluto::Pluto;
+use irc::send::Sender;
 
 struct Pending {
     pluto: Pluto,
+    out: Sender,
     counter: usize,
 }
 
 impl Pending {
-    fn new(pluto: Pluto) -> Pending {
+    fn new(pluto: Pluto, out: Sender) -> Pending {
         Pending {
             pluto: pluto,
+            out: out,
             counter: 0,
         }
     }
@@ -41,10 +45,12 @@ impl Pending {
         }
 
         if self.counter >= 3 {
+            self.out.send(b"you're done!\r\n");
             info!("can become active");
-            let active = Active::new(self.pluto);
+            let active = Active::new(self.pluto, self.out);
             Ok(Promotion::Ready(irc::Op::ok(Ok(active))))
         } else {
+            self.out.send(b"keep going...\r\n");
             Ok(Promotion::NotReady(self))
         }
     }
@@ -77,15 +83,14 @@ impl<A> Future for Listener<A> where A: Stream<Item=TcpStream> {
 
     fn poll(&mut self) -> Poll<(), A::Error> {
         loop {
-            let sock = match try_ready!(self.accept.poll()) {
-                Some(r) => r,
+            let (recv, send) = match try_ready!(self.accept.poll()) {
+                Some(r) => r.split(),
                 None => return Ok(Async::Ready(())),
             };
 
-            let recv = FramedRead::new(sock, IrcCodec);
-
-            let pending = Pending::new(self.pluto.clone());
-            pending.bind(&self.handle, recv);
+            let sender = Sender::bind(&self.handle, send);
+            let pending = Pending::new(self.pluto.clone(), sender);
+            pending.bind(&self.handle, FramedRead::new(recv, IrcCodec));
         }
     }
 }

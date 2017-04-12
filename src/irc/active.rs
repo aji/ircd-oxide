@@ -7,14 +7,16 @@ use tokio_core::reactor::Handle;
 
 use irc;
 use irc::pluto::Pluto;
+use irc::send::Sender;
 
 pub struct Active {
-    pluto: Pluto
+    pluto: Pluto,
+    out: Sender
 }
 
 impl Active {
-    pub fn new(pluto: Pluto) -> Active {
-        Active { pluto: pluto }
+    pub fn new(pluto: Pluto, out: Sender) -> Active {
+        Active { pluto: pluto, out: out }
     }
 
     pub fn bind<S: 'static>(self, handle: &Handle, sock: S)
@@ -24,8 +26,9 @@ impl Active {
         handle.spawn(Driver::new(self, sock));
     }
 
-    fn handle(self, m: irc::Message) -> irc::Op<Active> {
+    fn handle(mut self, m: irc::Message) -> irc::Op<Active> {
         info!(" -> {:?}", m);
+        self.out.send(b"you're active!\r\n");
         irc::Op::ok(self)
     }
 }

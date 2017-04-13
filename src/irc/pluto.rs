@@ -40,7 +40,7 @@ impl PlutoCore {
         self.observable.observer()
     }
 
-    fn send_update(&mut self) -> Completion<u32> {
+    fn send_update(&mut self) -> Completion {
         self.observable.put(self.val)
     }
 }
@@ -67,7 +67,7 @@ impl PlutoTxContext {
         PlutoTxContext { p: p, val_changed: false }
     }
 
-    fn finalize(self) -> Option<Completion<u32>> {
+    fn finalize(self) -> Option<Completion> {
         if self.val_changed {
             Some(self.p.borrow_mut().send_update())
         } else {
@@ -136,7 +136,7 @@ pub struct PlutoTx<F, T> {
 enum PlutoTxState<F, T> {
     Empty,
     Pending(F),
-    Finalizing(T, Completion<u32>),
+    Finalizing(T, Completion),
     Finished(T),
 }
 

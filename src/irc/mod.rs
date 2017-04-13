@@ -24,7 +24,8 @@ pub use self::message::Message;
 pub use self::op::Op;
 pub use self::pending::Listener;
 
-/// An error on a client connection. These generally cause the client to be closed
+/// A generic error type for IRC client handling. Where they occur, they generally cause the
+/// client connection to be closed as soon as possible.
 #[derive(Debug)]
 pub enum Error {
     IO(io::Error),
@@ -67,4 +68,5 @@ impl fmt::Display for Error {
     }
 }
 
+/// A result alias for operations that fail with an `irc::Error`
 pub type Result<T> = ::std::result::Result<T, Error>;

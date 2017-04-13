@@ -1,3 +1,5 @@
+//! Abstractions for managing the write half of sockets and collections of sockets.
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
@@ -21,6 +23,7 @@ use tokio_io::AsyncWrite;
 
 use irc;
 
+/// A collection of `Sender`s that can be acted upon in aggregate.
 #[derive(Clone)]
 pub struct SendPool {
     inner: Rc<RefCell<SendPoolInner>>,
@@ -32,6 +35,7 @@ struct SendPoolInner {
 }
 
 impl SendPool {
+    /// Creates an empty `SendPool`.
     pub fn new() -> SendPool {
         let inner = SendPoolInner {
             next_id: 1,
@@ -41,14 +45,17 @@ impl SendPool {
         SendPool { inner: Rc::new(RefCell::new(inner)) }
     }
 
+    /// Adds the `Sender` to this `SendPool` and returns its pool identifier.
     pub fn insert(&self, out: Sender) -> u64 {
         self.inner.borrow_mut().insert(out)
     }
 
+    /// Removes the `Sender` associated with the given pool identifier from this `SendPool`.
     pub fn remove(&self, id: u64) {
         self.inner.borrow_mut().remove(id);
     }
 
+    /// Sends a string of bytes to all `Sender`s
     pub fn send_all(&self, buf: &[u8]) {
         self.inner.borrow_mut().send_all(buf);
     }
@@ -92,12 +99,24 @@ impl Drop for SendInner {
     }
 }
 
+/// A handle to a byte buffer, which is drained to an `AsyncWrite` in a background task.
+///
+/// This struct can be cheaply cloned and moved around in a single thread to make it easier to
+/// push bytes to an `AsyncWrite` for asynchronous delivery. Unfortunately there is currently
+/// nothing resembling backpressure, and no way to react to driver-level events such as errors
+/// or termination.
 #[derive(Clone)]
 pub struct Sender {
     inner: Weak<RefCell<SendInner>>,
 }
 
 impl Sender {
+    /// Spawns a driver task to drain a buffer to the associated AsyncWrite, and returns a handle
+    /// that can be used to control the driver. See the other [`Sender`](struct.Sender.html)
+    /// functions for more information about what APIs are available.
+    ///
+    /// Don't get too cozy with this method placement. It will probably be moved to `SendPool`
+    /// in the near future.
     pub fn bind<W: 'static>(handle: &Handle, send: W) -> Sender where W: AsyncWrite {
         let driver = Driver::new(send);
         let inner = Rc::downgrade(&driver.inner);
@@ -105,6 +124,7 @@ impl Sender {
         Sender { inner: inner }
     }
 
+    /// Queues some bytes up to be sent to the associated socket.
     pub fn send(&mut self, buf: &[u8]) {
         if let Some(r) = self.inner.upgrade() {
             let mut inner = r.borrow_mut();
@@ -123,6 +143,8 @@ impl Sender {
         }
     }
 
+    /// Closes the sender for additional writes, but will continue to write any pending output
+    /// to the destination until the buffers are drained.
     pub fn close_soft(&mut self) {
         if let Some(r) = self.inner.upgrade() {
             let mut inner = r.borrow_mut();
@@ -135,6 +157,8 @@ impl Sender {
         }
     }
 
+    /// Closes the sender for writes, and stops the driver task on its next poll, discarding any
+    /// pending output.
     pub fn close_hard(&mut self) {
         if let Some(r) = self.inner.upgrade() {
             let mut inner = r.borrow_mut();
@@ -193,6 +217,7 @@ impl<W: AsyncWrite> Driver<W> {
 
                 DriverState::Parking(buf) => {
                     if inner.status == SendStatus::Draining {
+                        // TODO: check that inner.next_buf is empty too!
                         return Ok(Async::Ready(()));
                     } else {
                         inner.blocked_send = Some(task::park());

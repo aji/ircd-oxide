@@ -1,3 +1,5 @@
+//! Active (fully-registered) client connection handling
+
 use futures::Async;
 use futures::Future;
 use futures::Poll;
@@ -9,16 +11,19 @@ use irc;
 use irc::pluto::Pluto;
 use irc::send::Sender;
 
+/// An active client
 pub struct Active {
     pluto: Pluto,
     out: Sender
 }
 
 impl Active {
+    /// Creates a new `Active`
     pub fn new(pluto: Pluto, out: Sender) -> Active {
         Active { pluto: pluto, out: out }
     }
 
+    /// Spawns a driver for this `Active` which pulls messages from the given stream.
     pub fn bind<S: 'static>(self, handle: &Handle, sock: S)
         where S: Stream<Item=irc::Message>,
               irc::Error: From<S::Error>

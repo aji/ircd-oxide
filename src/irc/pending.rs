@@ -1,3 +1,5 @@
+//! Code to listen for and drive pre-registration connections
+
 use futures::Async;
 use futures::Future;
 use futures::Poll;
@@ -61,6 +63,7 @@ enum Promotion {
     Ready(irc::Op<Result<Active, Pending>>),
 }
 
+/// A task to spawn pending clients from a stream of incoming connections.
 pub struct Listener<A> {
     handle: Handle,
     pluto: Pluto,
@@ -68,6 +71,7 @@ pub struct Listener<A> {
 }
 
 impl<A> Listener<A> {
+    /// Creates a new `Listener`
     pub fn new(handle: &Handle, pluto: Pluto, accept: A) -> Listener<A> {
         Listener {
             handle: handle.clone(),

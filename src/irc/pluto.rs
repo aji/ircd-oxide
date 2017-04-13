@@ -1,3 +1,13 @@
+//! A toy world, for testing
+//!
+//! The Pluto subsystem is designed to have as many of the same feature dimensions as a real
+//! IRC state model, while ignoring all the complexity that would be introduced by actually
+//! implementing such a thing. Pluto is designed to have the following properties in common
+//! with an actual world:
+//!
+//!  * Shared data, which can be mutated atomically.
+//!  * Update broadcasts (implemented with `common::observe`).
+
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
@@ -35,14 +45,18 @@ impl PlutoCore {
     }
 }
 
+/// A trait to read shared information using the Pluto data model
 pub trait PlutoReader {
     fn get(&self) -> u32;
 }
 
+/// A trait to write shared information using the Pluto data model
 pub trait PlutoWriter {
     fn set(&mut self, x: u32) -> ();
 }
 
+/// A readable and writable reference to shared information, only made available in the context
+/// of a transaction.
 pub struct PlutoTxContext {
     p: PlutoRef,
     val_changed: bool
@@ -75,16 +89,20 @@ impl PlutoWriter for PlutoTxContext {
     }
 }
 
+/// A cloneable reference to shared information.
 #[derive(Clone)]
 pub struct Pluto {
     p: PlutoRef
 }
 
 impl Pluto {
+    /// Creates a new Pluto state world
     pub fn new() -> Pluto {
         Pluto { p: PlutoCore::new().into_ref() }
     }
 
+    /// Creates a new transaction with the given body. See [`PlutoTx`](struct.PlutoTx.html)
+    /// for more details.
     pub fn tx<F, T>(&self, body: F) -> PlutoTx<F, T>
     where F: FnOnce(&mut PlutoTxContext) -> T {
         PlutoTx {
@@ -93,6 +111,7 @@ impl Pluto {
         }
     }
 
+    /// Creates a new observer for changes to the shared information.
     pub fn observer(&self) -> Observer<u32> {
         self.p.borrow_mut().observer()
     }
@@ -104,6 +123,11 @@ impl PlutoReader for Pluto {
     }
 }
 
+/// A transaction on shared information.
+///
+/// This struct is a Future that must be polled in order to drive a transaction to completion.
+/// The Future will be resolved when the transaction has finished and all observers have seen
+/// the resulting changes.
 pub struct PlutoTx<F, T> {
     p: PlutoRef,
     state: PlutoTxState<F, T>,

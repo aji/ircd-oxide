@@ -14,21 +14,25 @@ use tokio_io::AsyncRead;
 use irc;
 use irc::active::Active;
 use irc::codec::IrcCodec;
-use irc::pluto::Pluto;
+use irc::pool::Pool;
 use irc::send::Sender;
 
+use world::World;
+
 struct Pending {
-    pluto: Pluto,
+    world: World,
+    pool: Pool,
     out: Sender,
-    counter: usize,
+    nick: Option<String>,
 }
 
 impl Pending {
-    fn new(pluto: Pluto, out: Sender) -> Pending {
+    fn new(world: World, pool: Pool, out: Sender) -> Pending {
         Pending {
-            pluto: pluto,
+            world: world,
+            pool: pool,
             out: out,
-            counter: 0,
+            nick: None,
         }
     }
 
@@ -42,15 +46,27 @@ impl Pending {
     fn handle(mut self, m: irc::Message) -> irc::Result<Promotion> {
         info!(" -> {:?}", m);
 
-        if b"REGISTER" == &m.verb[..] {
-            self.counter += 1;
+        if b"NICK" == &m.verb[..] && m.args.len() > 0 {
+            if let Ok(nick) = String::from_utf8(m.args[0].to_vec()) {
+                self.nick = Some(nick);
+            }
         }
 
-        if self.counter >= 3 {
-            self.out.send(b"you're done!\r\n");
+        if let Some(nick) = self.nick.as_ref().cloned() {
             info!("can become active");
-            let active = Active::new(self.pluto, self.out);
-            Ok(Promotion::Ready(irc::Op::ok(Ok(active))))
+
+            let op = self.world.add_user(nick.clone()).and_then(move |_| {
+                info!("added user, now adding channel");
+                self.pool.add_user(nick.clone(), self.out.clone());
+                self.world.add_chan("#foo".to_string()).and_then(move |_| {
+                    self.out.send(format!("welcome {}!\r\n", nick).as_bytes());
+                    let active = Active::new(self.world, self.out, nick);
+                    Ok(Ok(active))
+                })
+            }).map_err(|_| irc::Error::Other("register error"));
+
+            Ok(Promotion::Ready(irc::Op::boxed(op)))
+
         } else {
             self.out.send(b"keep going...\r\n");
             Ok(Promotion::NotReady(self))
@@ -66,16 +82,18 @@ enum Promotion {
 /// A task to spawn pending clients from a stream of incoming connections.
 pub struct Listener<A> {
     handle: Handle,
-    pluto: Pluto,
+    world: World,
+    pool: Pool,
     accept: A,
 }
 
 impl<A> Listener<A> {
     /// Creates a new `Listener`
-    pub fn new(handle: &Handle, pluto: Pluto, accept: A) -> Listener<A> {
+    pub fn new(handle: &Handle, world: World, pool: Pool, accept: A) -> Listener<A> {
         Listener {
             handle: handle.clone(),
-            pluto: pluto,
+            world: world,
+            pool: pool,
             accept: accept,
         }
     }
@@ -93,7 +111,7 @@ impl<A> Future for Listener<A> where A: Stream<Item=TcpStream> {
             };
 
             let sender = Sender::bind(&self.handle, send);
-            let pending = Pending::new(self.pluto.clone(), sender);
+            let pending = Pending::new(self.world.clone(), self.pool.clone(), sender);
             pending.bind(&self.handle, FramedRead::new(recv, IrcCodec));
         }
     }
@@ -156,13 +174,15 @@ impl<S: 'static> Driver<S>
                             return Ok(Async::Ready(()));
                         },
                         Async::Ready(Err(pending)) => {
+                            self.sock = Some(sock);
                             self.promotion = Some(Promotion::NotReady(pending));
                         },
                         Async::NotReady => {
+                            self.sock = Some(sock);
                             self.promotion = Some(Promotion::Ready(op));
+                            return Ok(Async::NotReady);
                         },
                     }
-                    self.sock = Some(sock);
                 },
             }
         }

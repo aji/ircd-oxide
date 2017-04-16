@@ -10,6 +10,7 @@ use time;
 use tokio_core::reactor::Handle;
 
 use crdb;
+use common::observe::Completion;
 use common::observe::Observable;
 use common::observe::Observer;
 
@@ -83,6 +84,7 @@ impl WorldInner {
 pub enum WorldEvent {
     UserJoin(String, String), // chan, user
     UserPart(String, String), // chan, user
+    Message(String, String, String), // chan, user, message
 }
 
 #[derive(Clone)]
@@ -123,7 +125,14 @@ impl World {
         self.inner.borrow_mut().part_user(chan, user)
     }
 
+    pub fn message(&mut self, chan: String, user: String, message: String) -> Completion {
+        let event = WorldEvent::Message(chan, user, message);
+        self.inner.borrow_mut().events.put(event)
+    }
+
     fn bind_raw(&mut self, handle: &Handle) {
+        debug!("binding raw updates");
+
         let updates = self.inner.borrow_mut().db.updates();
 
         handle.spawn(updates.for_each(|updates| {
@@ -133,6 +142,8 @@ impl World {
     }
 
     fn bind_u_table(&mut self, handle: &Handle) {
+        debug!("binding u_table updates");
+
         let inner = self.inner.clone();
         let updates = inner.borrow_mut().c_table.updates();
 
@@ -149,6 +160,8 @@ impl World {
     }
 
     fn bind_c_table(&mut self, handle: &Handle) {
+        debug!("binding c_table updates");
+
         let inner = self.inner.clone();
         let updates = inner.borrow_mut().c_table.updates();
 
@@ -165,6 +178,8 @@ impl World {
     }
 
     fn bind_m_table(&mut self, handle: &Handle) {
+        debug!("binding m_table updates");
+
         let inner = self.inner.clone();
         let updates = inner.borrow_mut().m_table.updates();
 

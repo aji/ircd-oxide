@@ -41,7 +41,9 @@ fn main() {
     let handle = core.handle();
     let addr = "127.0.0.1:6667".parse().unwrap();
     let port = tokio_core::net::TcpListener::bind(&addr, &handle).expect("failed to create listener");
-    let pluto = oxide::irc::pluto::Pluto::new();
-    let listener = oxide::irc::Listener::new(&handle, pluto, port.incoming().map(|x| x.0));
+    let mut world = oxide::world::World::new(&handle);
+    let pool = oxide::irc::pool::Pool::new();
+    pool.bind(&handle, &mut world);
+    let listener = oxide::irc::Listener::new(&handle, world, pool, port.incoming().map(|x| x.0));
     core.run(listener).expect("event loop exited");
 }

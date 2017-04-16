@@ -12,7 +12,7 @@ pub mod codec;
 pub mod message;
 pub mod op;
 pub mod pending;
-pub mod pluto;
+pub mod pool;
 pub mod send;
 
 use std::cmp;

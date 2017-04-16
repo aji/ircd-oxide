@@ -169,7 +169,7 @@ impl<T: fmt::Debug> Observable<T> {
             .map(|dispatch| {
                 let mut inner = dispatch.borrow_mut();
                 inner.pending.push_back(obs.clone());
-                inner.parked.take().map(|t| t.unpark());
+                inner.parked.as_ref().map(|t| t.unpark());
                 drop(inner);
                 Rc::downgrade(&dispatch)
             })
@@ -203,7 +203,7 @@ impl Future for Completion {
     }
 }
 
-impl<T> Stream for Observer<T> {
+impl<T: fmt::Debug> Stream for Observer<T> {
     type Item = Observation<T>;
     type Error = ();
 
@@ -212,13 +212,22 @@ impl<T> Stream for Observer<T> {
         let mut dispatch = self.dispatch.borrow_mut();
 
         if let Some(obs) = dispatch.pending.pop_front() {
+            debug!("delivering observation: {:?}", obs);
             Ok(Async::Ready(Some(obs)))
         } else if weak_count == 0 {
+            debug!("observable ended");
             Ok(Async::Ready(None))
         } else {
+            debug!("parking observer");
             dispatch.parked = Some(task::park());
             Ok(Async::NotReady)
         }
+    }
+}
+
+impl<T> Drop for Observer<T> {
+    fn drop(&mut self) {
+        debug!("(Observable) I am forgotten...");
     }
 }
 

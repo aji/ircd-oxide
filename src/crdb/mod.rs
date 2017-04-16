@@ -514,6 +514,8 @@ impl Future for Completion {
     type Error = ();
 
     fn poll(&mut self) -> Poll<(), ()> {
+        debug!("polling crdb completion");
+
         let mut inner = match self.inner.take() {
             Some(inner) => inner,
             None => {
@@ -526,6 +528,7 @@ impl Future for Completion {
             if let Async::Ready(_) = try!(inner[0].poll()) {
                 inner.swap_remove(0);
             } else {
+                debug!("not ready...");
                 self.inner = Some(inner);
                 return Ok(Async::NotReady);
             }

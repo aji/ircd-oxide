@@ -8,19 +8,21 @@ use futures::Stream;
 use tokio_core::reactor::Handle;
 
 use irc;
-use irc::pluto::Pluto;
 use irc::send::Sender;
+
+use world::World;
 
 /// An active client
 pub struct Active {
-    _pluto: Pluto,
-    out: Sender
+    world: World,
+    out: Sender,
+    nick: String,
 }
 
 impl Active {
     /// Creates a new `Active`
-    pub fn new(pluto: Pluto, out: Sender) -> Active {
-        Active { _pluto: pluto, out: out }
+    pub fn new(world: World, out: Sender, nick: String) -> Active {
+        Active { world: world, out: out, nick: nick }
     }
 
     /// Spawns a driver for this `Active` which pulls messages from the given stream.
@@ -33,8 +35,37 @@ impl Active {
 
     fn handle(mut self, m: irc::Message) -> irc::Op<Active> {
         info!(" -> {:?}", m);
-        self.out.send(b"you're active!\r\n");
-        irc::Op::ok(self)
+
+        match &m.verb[..] {
+            b"JOIN" => {
+                let chan = "#foo".to_string();
+                let op = self.world.join_user(chan, self.nick.clone())
+                    .and_then(move |_| Ok(self))
+                    .map_err(|_| irc::Error::Other("part fail"));
+                irc::Op::boxed(op)
+            },
+
+            b"PART" => {
+                let chan = "#foo".to_string();
+                let op = self.world.part_user(chan, self.nick.clone())
+                    .and_then(move |_| Ok(self))
+                    .map_err(|_| irc::Error::Other("part fail"));
+                irc::Op::boxed(op)
+            },
+
+            b"PRIVMSG" => {
+                let chan = "#foo".to_string();
+                let message = "hello".to_string();
+                let op = self.world.message(chan, self.nick.clone(), message)
+                    .and_then(move |_| Ok(self))
+                    .map_err(|_| irc::Error::Other("message fail"));
+                irc::Op::boxed(op)
+            },
+
+            _ => {
+                irc::Op::ok(self)
+            }
+        }
     }
 }
 

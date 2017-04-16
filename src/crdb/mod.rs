@@ -54,7 +54,7 @@
 //!  * **Commutative**: `merge(a, b) = merge(b, a)`. That is, the
 //!    "direction" of the merge does not matter.
 //!
-//!  * **Associative**: `merge(a, merge(b, c)) = `merge(merge(a, b), c)`. That is, merging
+//!  * **Associative**: `merge(a, merge(b, c))` = `merge(merge(a, b), c)`. That is, merging
 //!    three or more items can be done my merging them in pairs, in no particular order.
 //!
 //! Simple examples of schemas that meet these criteria:

@@ -31,3 +31,4 @@ mod macros;
 pub mod common;
 pub mod crdb;
 pub mod irc;
+pub mod world;

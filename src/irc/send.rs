@@ -1,5 +1,7 @@
 //! Abstractions for managing the write half of sockets and collections of sockets.
 
+// TODO: implement a way to deliver events that terminate the driver
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;

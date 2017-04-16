@@ -13,14 +13,14 @@ use irc::send::Sender;
 
 /// An active client
 pub struct Active {
-    pluto: Pluto,
+    _pluto: Pluto,
     out: Sender
 }
 
 impl Active {
     /// Creates a new `Active`
     pub fn new(pluto: Pluto, out: Sender) -> Active {
-        Active { pluto: pluto, out: out }
+        Active { _pluto: pluto, out: out }
     }
 
     /// Spawns a driver for this `Active` which pulls messages from the given stream.

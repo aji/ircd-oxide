@@ -179,6 +179,16 @@ impl<T: fmt::Debug> Observable<T> {
     }
 }
 
+impl<T> Drop for Observable<T> {
+    fn drop(&mut self) {
+        for r in self.dispatch.drain(..) {
+            if let Some(dispatch) = r.upgrade() {
+                dispatch.borrow_mut().parked.take().map(|t| t.unpark());
+            }
+        }
+    }
+}
+
 impl Future for Completion {
     type Item = ();
     type Error = ();
@@ -198,9 +208,13 @@ impl<T> Stream for Observer<T> {
     type Error = ();
 
     fn poll(&mut self) -> Poll<Option<Observation<T>>, ()> {
+        let weak_count = Rc::weak_count(&self.dispatch);
         let mut dispatch = self.dispatch.borrow_mut();
-        if let Some(obs) = dispatch.pending.pop_back() {
+
+        if let Some(obs) = dispatch.pending.pop_front() {
             Ok(Async::Ready(Some(obs)))
+        } else if weak_count == 0 {
+            Ok(Async::Ready(None))
         } else {
             dispatch.parked = Some(task::park());
             Ok(Async::NotReady)

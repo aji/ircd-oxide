@@ -140,7 +140,11 @@ impl CRDB {
         let raw = Table { inner: inner.clone() };
         let typed = Table { inner: inner };
 
-        self.tables.insert(name.to_string(), Box::new(raw)).expect("table name reused");
+        let prev = self.tables.insert(name.to_string(), Box::new(raw));
+
+        if prev.is_some() {
+            panic!("table name reused");
+        }
 
         typed
     }
@@ -284,6 +288,11 @@ impl<S: Schema> Table<S> {
             next: HashMap::new(),
         }
     }
+
+    #[cfg(test)]
+    fn snapshot(self) -> HashMap<String, S::Item> {
+        self.inner.borrow().rows.clone()
+    }
 }
 
 impl<S: Schema> RawTable for Table<S> {
@@ -335,6 +344,8 @@ impl<S: Schema> TableInner<S> {
             Some(ref prev) => self.schema.merge(prev.clone(), item),
             None => item,
         };
+
+        self.rows.insert(key.clone(), next.clone());
 
         let typed_update = Update {
             key: key.clone(),

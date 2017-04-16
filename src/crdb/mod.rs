@@ -154,14 +154,6 @@ impl CRDB {
         self.updates.observer()
     }
 
-    /// Creates a raw transaction
-    pub fn open_raw(&self) -> RawTransaction {
-        RawTransaction {
-            txid: random(),
-            items: HashMap::new()
-        }
-    }
-
     /// Commits a raw transaction
     pub fn commit_raw(&mut self, tx: RawTransaction) -> Completion {
         let mut completions = Vec::new();
@@ -221,6 +213,19 @@ pub struct RawTransaction {
 }
 
 impl RawTransaction {
+    /// Creates a new raw transaction
+    pub fn new() -> RawTransaction {
+        RawTransaction {
+            txid: random(),
+            items: HashMap::new()
+        }
+    }
+
+    /// Returns the ID of this transaction
+    pub fn txid(&self) -> u64 {
+        self.txid
+    }
+
     /// Adds an item to this transaction. If an item with the given key already exists in this
     /// transaction, then the items will be merged when the transaction is committed.
     pub fn add(&mut self, table: String, k: String, data: Record) {
@@ -407,6 +412,11 @@ pub struct Transaction<'t, S: 'static + Schema> {
 }
 
 impl<'t, S: 'static + Schema> Transaction<'t, S> {
+    /// Returns the ID of this transaction
+    pub fn txid(&self) -> u64 {
+        self.txid
+    }
+
     /// Reads an item from the table. This will behave as if any items added to the transaction
     /// have already been committed.
     pub fn get(&self, key: &str) -> Option<S::Item> {

@@ -283,14 +283,14 @@ fn see_own_writes_and_coalesce_2() {
 fn raw_transaction() {
     let fin = with_test_crdb(|db, _min, _max| {
         {
-            let mut tx = db.open_raw();
+            let mut tx = RawTransaction::new();
             tx.add("min".to_string(), "a".to_string(), Min.encode(&12));
             tx.add("min".to_string(), "a".to_string(), Min.encode(&10));
             db.commit_raw(tx);
         }
 
         {
-            let mut tx = db.open_raw();
+            let mut tx = RawTransaction::new();
             tx.add("min".to_string(), "a".to_string(), Min.encode(&5));
             tx.add("min".to_string(), "a".to_string(), Min.encode(&9));
             db.commit_raw(tx);

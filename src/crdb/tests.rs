@@ -5,6 +5,8 @@ use futures::Async;
 use futures::Future;
 use futures::Stream;
 
+use tokio_core::reactor::Core;
+
 use super::*;
 
 struct Min;
@@ -313,4 +315,50 @@ fn raw_transaction() {
 
     assert_eq!(fin.max_updates.len(), 0);
     assert_eq!(fin.max_finish.len(), 0);
+}
+
+#[test]
+fn test_completion() {
+    use std::rc::Rc;
+    use std::cell::RefCell;
+
+    let mut db = CRDB::new();
+    let mut min = db.create_table("min", Min);
+
+    let order: Rc<RefCell<Vec<&'static str>>> = Rc::new(RefCell::new(Vec::new()));
+
+    let raw_order = order.clone();
+    let raw_updates = db.updates().for_each(move |_| {
+        raw_order.borrow_mut().push("raw update");
+        Ok(())
+    });
+
+    let min_order = order.clone();
+    let min_updates = db.updates().for_each(move |_| {
+        min_order.borrow_mut().push("min update");
+        Ok(())
+    });
+
+    let completion_order = order.clone();
+    let completion = {
+        let mut tx = min.open();
+        tx.add("a".to_string(), 10);
+        db.commit(tx)
+    }.and_then(move |_| {
+        completion_order.borrow_mut().push("completion");
+        Ok(())
+    });
+
+    let mut core = Core::new().expect("tokio core");
+    let mut handle = core.handle();
+    handle.spawn(raw_updates);
+    handle.spawn(min_updates);
+    core.run(completion).expect("completion");
+
+    let order_data = order.borrow();
+    assert_eq!(order_data.len(), 3);
+    assert_eq!(order_data[2], "completion");
+    assert!(order_data[0] != order_data[1]);
+    assert!(order_data[0] == "raw update" || order_data[0] == "min update");
+    assert!(order_data[1] == "raw update" || order_data[1] == "min update");
 }

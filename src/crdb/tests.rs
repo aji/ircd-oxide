@@ -350,7 +350,7 @@ fn test_completion() {
     });
 
     let mut core = Core::new().expect("tokio core");
-    let mut handle = core.handle();
+    let handle = core.handle();
     handle.spawn(raw_updates);
     handle.spawn(min_updates);
     core.run(completion).expect("completion");

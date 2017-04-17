@@ -27,7 +27,7 @@
 //! # extern crate oxide;
 //! #
 //! # use oxide::common::observe::Observable;
-//! # use tokio_core::reactor::{Core, Handle};
+//! # use tokio_core::reactor::Core;
 //! # use futures::{Future, Stream};
 //! #
 //! # fn main() {

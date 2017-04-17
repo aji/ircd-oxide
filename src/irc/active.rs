@@ -15,14 +15,14 @@ use world::World;
 /// An active client
 pub struct Active {
     world: World,
-    out: Sender,
+    _out: Sender,
     nick: String,
 }
 
 impl Active {
     /// Creates a new `Active`
     pub fn new(world: World, out: Sender, nick: String) -> Active {
-        Active { world: world, out: out, nick: nick }
+        Active { world: world, _out: out, nick: nick }
     }
 
     /// Spawns a driver for this `Active` which pulls messages from the given stream.

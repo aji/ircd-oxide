@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use futures::Future;
 use futures::Stream;
 
 use tokio_core::reactor::Handle;

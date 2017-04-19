@@ -77,11 +77,8 @@
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::collections::HashMap;
-use std::collections::hash_map::Values;
 use std::fmt;
-use std::hash::Hash;
 use std::rc::Rc;
-use std::vec;
 
 use futures::Async;
 use futures::Future;

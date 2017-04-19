@@ -7,6 +7,7 @@
 //! Functionality common to many modules.
 
 pub mod bimap;
+pub mod byte_ring;
 pub mod sid;
 pub mod observe;
 pub mod table;

@@ -9,20 +9,20 @@
 pub mod active;
 pub mod cap;
 pub mod codec;
+pub mod driver;
+pub mod listener;
 pub mod message;
 pub mod op;
 pub mod pending;
 pub mod pool;
 pub mod send;
 
-use std::cmp;
 use std::convert::From;
 use std::fmt;
 use std::io;
 
 pub use self::message::Message;
 pub use self::op::Op;
-pub use self::pending::Listener;
 
 /// A generic error type for IRC client handling. Where they occur, they generally cause the
 /// client connection to be closed as soon as possible.
@@ -63,7 +63,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::IO(ref e) => write!(f, "(io) {}", e),
-            Error::Other(ref s) => write!(f, "(?) {}", s),
+            Error::Other(ref s) => write!(f, "{}", s),
         }
     }
 }

@@ -1,7 +1,5 @@
 //! Active (fully-registered) client connection handling
 
-use futures::Future;
-
 use irc;
 use irc::driver::Client;
 use irc::send::Sender;
@@ -22,7 +20,7 @@ impl Active {
     }
 
     pub fn handle(self, m: irc::Message) -> irc::Op<Client> {
-        irc::Op::boxed(self.handle_easy(m).map(Client::Active))
+        self.handle_easy(m).map(Client::Active)
     }
 
     fn handle_easy(mut self, m: irc::Message) -> irc::Op<Active> {
@@ -31,27 +29,21 @@ impl Active {
         match &m.verb[..] {
             b"JOIN" => {
                 let chan = "#foo".to_string();
-                let op = self.world.join_user(chan, self.nick.clone())
-                    .and_then(move |_| Ok(self))
-                    .map_err(|_| irc::Error::Other("part fail"));
-                irc::Op::boxed(op)
+                let op = self.world.join_user(chan, self.nick.clone());
+                irc::Op::crdb(op, self)
             },
 
             b"PART" => {
                 let chan = "#foo".to_string();
-                let op = self.world.part_user(chan, self.nick.clone())
-                    .and_then(move |_| Ok(self))
-                    .map_err(|_| irc::Error::Other("part fail"));
-                irc::Op::boxed(op)
+                let op = self.world.part_user(chan, self.nick.clone());
+                irc::Op::crdb(op, self)
             },
 
             b"PRIVMSG" => {
                 let chan = "#foo".to_string();
                 let message = "hello".to_string();
-                let op = self.world.message(chan, self.nick.clone(), message)
-                    .and_then(move |_| Ok(self))
-                    .map_err(|_| irc::Error::Other("message fail"));
-                irc::Op::boxed(op)
+                let op = self.world.message(chan, self.nick.clone(), message);
+                irc::Op::observe(op, self)
             },
 
             _ => {
